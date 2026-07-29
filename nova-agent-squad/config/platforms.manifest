@@ -1,0 +1,9 @@
+# target|kind|source|dist_path|install_path
+opencode|dir|src/agents|platforms/opencode/agents|.config/opencode/agents
+cursor|file|src/templates/platforms/cursor/AGENTS.md.tmpl|platforms/cursor/AGENTS.md|.cursor/agents
+cursor-cli-agent|file|src/templates/platforms/cursor-cli-agent/AGENTS.md.tmpl|platforms/cursor-cli-agent/AGENTS.md|.cursor-cli-agent
+claude-code|file|src/templates/platforms/claude-code/CLAUDE.md.tmpl|platforms/claude-code/CLAUDE.md|.claude
+codex|file|src/templates/platforms/codex/AGENTS.md.tmpl|platforms/codex/AGENTS.md|.codex/agents
+gemini-cli|file|src/templates/platforms/gemini-cli/AGENTS.md.tmpl|platforms/gemini-cli/AGENTS.md|.gemini/agents
+kiro|file|src/templates/platforms/kiro/AGENTS.md.tmpl|platforms/kiro/AGENTS.md|.kiro/agents
+vscode|file|src/templates/platforms/vscode/nas.instructions.md.tmpl|platforms/vscode/.vscode/nas.instructions.md|.vscode

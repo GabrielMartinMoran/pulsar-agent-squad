@@ -1,0 +1,36 @@
+version: "1.1"
+memory:
+  enabled: true
+  provider: mind
+
+mind_spaces:
+  project_space:
+    enabled: true
+    name: "projects/nova-agent-squad"
+    description: "Project context, decisions, architecture, and session checkpoints"
+
+gherkin:
+  enabled: true
+  storage_path: "specs/features"
+  persist_to_repo:
+    when: "on_done"   # always = every planning/replanning pass; on_done = once the plan is finalized/approved before developer execution; never = delegation/output only
+    format: "merged"   # merged = canonical full .feature files; delta = reserved/experimental unless separately contracted
+  include:
+    - "product/*"
+    - "application/*"
+  exclude:
+    - "researcher/*"
+    - "sandbox/*"
+
+# Memory-Centric SDD Configuration
+sdd:
+  enabled: true                    # enable Memory-Centric SDD
+  change_memory:
+    auto_create: true              # auto-create Change Memory on planning
+  delta:
+    removal_policy: "remove"       # remove | mark_deprecated
+    resolve_on: "on_done"          # on_done | on_archive | manual | never
+  memory_tracking: true            # track lifecycle in memory
+
+config_policy:
+  require_confirmation: true
