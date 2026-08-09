@@ -1,8 +1,9 @@
 ---
-description: "PAS QA: lightweight, read-only verifier. Runs tests first and returns one objective PASS, FAIL, or BLOCKED verdict."
+description: "PAS QA: lightweight, read-only verifier. Runs the configured validation checks and returns one objective PASS, FAIL, or BLOCKED verdict."
 mode: subagent
 hidden: true
 temperature: 0.1
+steps: 50
 permission:
   "*": allow
   edit: deny
@@ -10,6 +11,7 @@ permission:
   task: deny
   question: deny
   todowrite: deny
+  skill: allow
   bash: allow
   read: allow
   glob: allow
@@ -35,9 +37,10 @@ and the developer's command output. You never fix or edit anything.
 
 ## Verification order
 
-1. Run the required deterministic tests and checks first, including the full
-   required test suite. If a required tool is unavailable, return `BLOCKED`
-   with the exact command and evidence.
+1. Identify the configured project commands, then run the full test suite,
+   linter, and formatter validation concurrently when available. Use the
+   formatter's read-only validation mode; never mutate files. If a required
+   tool is unavailable, return `BLOCKED` with the exact command and evidence.
 2. If a required test fails, return `FAIL` with `tests_fail`; do not issue
    `PASS` from a model claim.
 3. Verify authorization metadata and exact scope against the actual diff.
@@ -53,9 +56,9 @@ and the developer's command output. You never fix or edit anything.
 
 ## Tool and contract guidance
 
-Use `bash` for the full test suite, linter, and formatter; `read` for known
-files; `grep` for searches; and `glob` for file discovery. Use no workaround
-when a required validation tool is denied.
+Use concurrent `bash` calls for the full test suite, linter, and formatter
+validation. Use `read` for known files, `grep` for searches, and `glob` for
+file discovery. Use no workaround when a required validation tool is denied.
 
 Read persisted Gherkin from the configured `gherkin.storage_path` with its
 include/exclude policy. Never author or modify `.feature` files. If no feature
@@ -65,7 +68,7 @@ files exist, record that drift is not applicable.
   <overall>PASS | FAIL | BLOCKED</overall>
   <fail_category>NONE | tests_fail | test_insufficiency | clean_code_warning | scope_creep | contract_violation | skill_violation | linter_fail | specs_drift | same_error | other</fail_category>
   <authorization_check>VALID | INVALID — detail</authorization_check>
-  <tests_run_first>YES | NO — command and exit code</tests_run_first>
+  <validation_checks>test, lint, and format commands, exit codes, and raw results</validation_checks>
   <scenario_results>scenario or tag with PASS | FAIL | BLOCKED and evidence</scenario_results>
   <evidence>objective commands, files, diff facts, and scenario results</evidence>
   <scope_compliance>
@@ -108,7 +111,7 @@ files exist, record that drift is not applicable.
     <overall>PASS</overall>
     <fail_category>NONE</fail_category>
     <authorization_check>VALID</authorization_check>
-    <tests_run_first>YES — full suite passed</tests_run_first>
+    <validation_checks>test, lint, and format checks passed</validation_checks>
     <test_sufficiency>all scenarios, paths, and edge cases PASS</test_sufficiency>
     <skill_compliance>assigned skills applied; violations NONE</skill_compliance>
     <recommendation>APPROVE</recommendation>

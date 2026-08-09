@@ -33,6 +33,8 @@ describe('PAS roster and Lead contract', () => {
     expect(frontmatter).toMatch(/"pas_researcher": allow/);
     expect(frontmatter).toMatch(/"pas_developer": allow/);
     expect(frontmatter).toMatch(/"pas_qa": allow/);
+    expect(frontmatter).toContain('"specs/*.feature": allow');
+    expect(frontmatter).toContain('"specs/**/*.feature": allow');
     expect(frontmatter).not.toContain('planner');
     expect(frontmatter).not.toContain('developer_mini');
   });
@@ -41,12 +43,12 @@ describe('PAS roster and Lead contract', () => {
     expect(leadPrompt).toContain('combine the orchestrator and planner responsibilities');
     expect(leadPrompt).toContain('Research Quality Gate');
     expect(leadPrompt).toContain('Planning Quality Gate');
-    expect(leadPrompt).toContain('one closed, atomic task');
+    expect(leadPrompt).toContain('one atomic task at a time');
     expect(leadPrompt).toContain('Adjudicate QA');
     expect(leadPrompt).toContain('never edits source code');
     expect(leadPrompt).toContain('Implementation plan is ready. Do you');
     expect(leadPrompt).toContain('.pas/state/');
-    expect(leadPrompt).toContain('specs/features/');
+    expect(leadPrompt).toContain('specs/**/*.feature');
   });
 
   it('preserves skill assignment and bounded retry contracts', () => {
@@ -76,7 +78,8 @@ describe('PAS worker contracts', () => {
     expect(qa).toMatch(/write: deny/);
     expect(developer).toMatch(/edit:\n\s+"\*": allow/);
     expect(developer).toContain('".pas/**": deny');
-    expect(developer).toContain('"specs/features/**": deny');
+    expect(developer).toContain('"specs/*.feature": deny');
+    expect(developer).toContain('"specs/**/*.feature": deny');
     expect(developer).toContain('one approved atomic task');
     expect(developer).toContain('Red -> Green -> Refactor');
     expect(developer).toContain('Skill Assignment Contract');
@@ -93,7 +96,7 @@ describe('PAS worker contracts', () => {
     expect(researcher).toContain('<repository_sources');
     expect(researcher).toContain('<skill_application>');
     expect(researcher).toContain('<memory_writes>');
-    expect(qa).toContain('Run the required deterministic tests and checks first');
+    expect(qa).toContain('run the full test suite,');
     expect(qa).toContain('<authorization_check>');
     expect(qa).toContain('<scenario_results>');
     expect(qa).toContain('<test_sufficiency>');

@@ -28,13 +28,14 @@ describe('build command', () => {
     ]);
   });
 
-  it('should inject shared developer content into pas_developer.md', async () => {
+  it('should build the self-contained pas_developer.md prompt', async () => {
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
     expect(result.exitCode).toBe(0);
 
     const devContent = readFileSync('dist/platforms/opencode/agents/pas_developer.md', 'utf-8');
     expect(devContent).toContain('<skill_application>');
     expect(devContent).toContain('<test_coverage_explanation>');
+    expect(devContent).not.toContain('INJECT:developer_shared');
     expect(devContent).not.toContain('PAS concise-work reference');
   });
 

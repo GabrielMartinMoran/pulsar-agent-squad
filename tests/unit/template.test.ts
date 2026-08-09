@@ -1,25 +1,17 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'fs';
 
-describe('pas_developer_shared.eta template', () => {
-  it('renders the bounded TDD constraints and output contract', async () => {
-    const template = readFileSync('src/cli/templates/pas_developer_shared.eta', 'utf-8');
-    const { Eta } = await import('eta');
-    const eta = new Eta({ autoTrim: false });
-    const constraints = eta.renderString(template, { agent: 'developer', section: 'constraints' });
-    const output = eta.renderString(template, { agent: 'developer', section: 'output_format' });
-    expect(constraints).toContain('approved atomic task');
-    expect(constraints).toContain('Red, Green, Refactor');
-    expect(output).toContain('<implementation_report>');
-    expect(output).toContain('<task_status>PASS | BLOCKED</task_status>');
-    expect(output).toContain('<scenarios_implemented>');
-    expect(output).toContain('<skill_application>');
-    expect(output).toContain('<test_coverage_explanation>');
-    expect(output).toContain('<memory_writes>');
-  });
-
-  it('does not include mini-developer branching', async () => {
-    const template = readFileSync('src/cli/templates/pas_developer_shared.eta', 'utf-8');
-    expect(template).not.toContain('developer_mini');
+describe('pas_developer prompt contract', () => {
+  it('is self-contained and has no shared-template markers', () => {
+    const prompt = readFileSync('src/agents/pas_developer.md', 'utf-8');
+    expect(prompt).toContain('## Hard constraints');
+    expect(prompt).toContain('## Tool guidance');
+    expect(prompt).toContain('<implementation_report>');
+    expect(prompt).toContain('<task_status>PASS | BLOCKED</task_status>');
+    expect(prompt).toContain('<skill_application>');
+    expect(prompt).toContain('<test_coverage_explanation>');
+    expect(prompt).toContain('<memory_writes>');
+    expect(prompt).not.toContain('INJECT:developer_shared');
+    expect(prompt).not.toContain('developer_mini');
   });
 });

@@ -1,13 +1,9 @@
 import { defineCommand } from 'citty';
 import { parseManifest } from '../lib/manifest';
-import { Eta } from 'eta';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'fs';
 import { spawnSync } from 'bun';
 import { join } from 'path';
 import { injectSkillPoliciesFromConfig } from '../lib/skill-injection';
-
-// Minimal build logic imported from build.ts pattern
-const eta = new Eta({ autoTrim: false });
 
 function rmrf(path: string): void {
   if (!path) return;
@@ -16,18 +12,6 @@ function rmrf(path: string): void {
   } catch {
     // ignore
   }
-}
-
-function getDeveloperSharedContent(agent: 'developer', section: string): string {
-  const templatePath = `${import.meta.dir}/../templates/pas_developer_shared.eta`;
-  const template = readFileSync(templatePath, 'utf-8');
-  return eta.renderString(template, { agent, section });
-}
-
-function detectDeveloperAgent(sourceFile: string): 'developer' | null {
-  const fileName = sourceFile.split('/').pop();
-  if (fileName === 'pas_developer.md') return 'developer';
-  return null;
 }
 
 function agentNameFromDestFile(destFile: string): string | null {
@@ -41,14 +25,6 @@ function agentNameFromDestFile(destFile: string): string | null {
 
 function processAgentFile(sourceFile: string, destFile: string): void {
   let content = readFileSync(sourceFile, 'utf-8');
-  const devAgent = detectDeveloperAgent(sourceFile);
-
-  if (devAgent && content.includes('INJECT:developer_shared')) {
-    const markerPattern = /<!-- INJECT:developer_shared_(\w+) -->\n/g;
-    content = content.replace(markerPattern, (_match, section) => {
-      return getDeveloperSharedContent(devAgent, section);
-    });
-  }
 
   const agentName = agentNameFromDestFile(destFile);
   if (agentName) {
