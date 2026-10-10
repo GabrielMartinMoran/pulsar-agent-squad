@@ -256,6 +256,38 @@ permission:
     expect(out).not.toContain('"old-key": allow');
   });
 
+  it('replaces a scalar `skill: allow` line without creating a duplicate key', () => {
+    // Canonical PAS sources carry `skill: allow` as a scalar child of
+    // `permission:`. Injecting a nested `skill:` block on top of it used to
+    // produce two `skill:` keys, which is invalid YAML and makes strict
+    // parsers (OpenCode v2) drop the whole agent file.
+    const md = `---
+description: "scalar skill"
+mode: subagent
+permission:
+  "*": allow
+  todowrite: deny
+  skill: allow
+  bash: allow
+---
+
+# body
+`;
+    const out = injectSkillBlock(md, { 'IADEV-*': 'deny' });
+    const lines = out.split('\n');
+    // Exactly one `skill:` key remains.
+    const skillCount = lines.filter((l) => l.trim().startsWith('skill:')).length;
+    expect(skillCount).toBe(1);
+    // The injected rule is present with the nested-block indentation.
+    const skillLine = lines.findIndex((l) => l.trim() === 'skill:');
+    expect(skillLine).toBeGreaterThan(0);
+    expect(lines[skillLine + 1]).toBe('    "IADEV-*": deny');
+    // The scalar `skill: allow` is gone; siblings are preserved.
+    expect(out).not.toContain('skill: allow');
+    expect(out).toContain('  todowrite: deny');
+    expect(out).toContain('  bash: allow');
+  });
+
   it('places skill AFTER `*`: allow but BEFORE the orchestrator nested children', () => {
     const out = injectSkillBlock(ORCHESTRATOR_FRONTMATTER, {
       'IADEV*': 'deny',
