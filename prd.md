@@ -185,6 +185,11 @@ It must:
 - Verify authorization, scope, Gherkin alignment, and required checks.
 - Report raw evidence instead of trusting a developer's claimed result.
 - Identify missing test coverage, drift, and scope creep.
+- Verify that each behavior uses the cheapest sufficient test level.
+- Detect lower-level alternatives, duplicated coverage, unjustified E2E tests,
+  weak diagnostics, flakiness, and avoidable test cost.
+- Classify the portfolio as healthy, top-heavy, inverted, or unknown. The
+  portfolio must remain clearly pyramidal without a fixed numerical ratio.
 - Return `PASS`, `FAIL`, or `BLOCKED` using the versioned PAS contract.
 
 QA is not the sole authority. Deterministic checks run first, and the PAS Lead
@@ -288,6 +293,7 @@ The contracts must cover:
 - QA verdict and failure category.
 - Operational handoff and escalation.
 - Feature state transitions.
+- Test strategy, test level, cheapest sufficient level, and E2E justification.
 
 Deterministic gates must validate, where the runtime supports them:
 
@@ -300,6 +306,8 @@ Deterministic gates must validate, where the runtime supports them:
 - Gherkin references and specification drift.
 - Tool and skill permissions.
 - Retry count and escalation state.
+- Test portfolio shape, test-level rationale, duplication, duration, and
+  flakiness where the runtime supports them.
 
 The model's declaration of `PASS`, `APPROVED`, or `DONE` is never sufficient
 without supporting evidence.
@@ -430,6 +438,19 @@ source permissions, explicit about model identity, and economical in token use.
 The system must prefer deterministic validation over model self-reporting. It
 must expose enough run metadata to compare cost, latency, retries, escalation,
 and quality against NAS.
+
+### Testing portfolio policy
+
+PAS must use the cheapest sufficient test level for each behavior. The default
+portfolio contains many unit tests, fewer integration or contract tests, and a
+small number of E2E tests for risks that lower levels cannot establish. This is
+a qualitative invariant: the portfolio must remain clearly pyramidal, not a
+square or an inverted pyramid, without enforcing a fixed numerical ratio.
+
+Every higher-level test requires a reason that a lower level cannot provide the
+needed confidence. QA must detect cheaper or more diagnostic alternatives,
+duplicated coverage, unnecessary E2E tests, poor isolation, flakiness, and
+avoidable runtime cost.
 
 ## Success metrics
 

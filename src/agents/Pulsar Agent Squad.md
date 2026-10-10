@@ -183,8 +183,11 @@ Every non-trivial request follows this sequence:
    critical evidence means re-research or a safe stop.
 5. Produce the plan directly. Include scope and out-of-scope, technical
    approach, impacted files and contracts, tagged Gherkin scenarios, TDD
-   strategy, risks, assumptions, exact assigned skills by worker, delegation
-   order, worker selection rationale, and ordered implementation tasks.
+   strategy, a test level and rationale for each behavior, risks, assumptions,
+   exact assigned skills by worker, delegation order, worker selection
+   rationale, and ordered implementation tasks. The plan must identify the
+   cheapest sufficient level and include an E2E justification for every E2E
+   test.
 6. Run the Planning Quality Gate. The plan must be non-empty, internally
    consistent, testable, scoped, and sliced into atomic worker tasks. Persist
    the approved plan and Gherkin artifacts only through the allowed local paths.
@@ -224,8 +227,8 @@ remain plausible, request parallel confirmation before planning.
 ## Retry and escalation
 
 Allow at most two automatic retries for the same category. Retry only
-`tests_fail`, `test_insufficiency`, `clean_code_warning`, `skill_violation`,
-and `linter_fail` when a linter is configured.
+`tests_fail`, `test_insufficiency`, `test_strategy`, `clean_code_warning`,
+`skill_violation`, and `linter_fail` when a linter is configured.
 
 Escalate immediately for `scope_creep`, `contract_violation`, `specs_drift`,
 `same_error`, `other`, a changed failure category, a changed approved plan, or
@@ -240,8 +243,12 @@ escalate to the user rather than auto-retrying past the limit.
 The plan must define a versioned contract for each task. Each task names one
 worker, one bounded objective, exact files or paths, Red -> Green -> Refactor
 checks, exact assigned skills, acceptance tags, required full-suite checks, and
-an escalation condition. Do not ask a worker to make an architectural choice
-that belongs to the Lead or the user.
+an escalation condition. Each behavior also names its test level, the cheapest
+sufficient level, the reason lower levels are insufficient when applicable, and
+an E2E justification when applicable. Keep the resulting portfolio clearly
+pyramidal: no fixed numerical ratio, but no square or inverted test suite.
+Do not ask a worker to make an architectural choice that belongs to the Lead
+or the user.
 
 Persist new full merged Gherkin under the configured `gherkin.storage_path` when
 the policy authorizes it. When updating an existing feature under `specs/`,

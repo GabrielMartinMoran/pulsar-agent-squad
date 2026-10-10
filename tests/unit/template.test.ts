@@ -15,3 +15,45 @@ describe('pas_developer prompt contract', () => {
     expect(prompt).not.toContain('developer_mini');
   });
 });
+
+describe('pyramid testing policy contract', () => {
+  it('requires the developer to choose the cheapest sufficient test level', () => {
+    const prompt = readFileSync('src/agents/pas_developer.md', 'utf-8');
+
+    expect(prompt).toContain('cheapest sufficient level');
+    expect(prompt).toContain('unit');
+    expect(prompt).toContain('integration');
+    expect(prompt).toContain('E2E');
+    expect(prompt).toContain('Do not turn every Gherkin scenario into an E2E test');
+    expect(prompt).toContain('<test_strategy_review>');
+  });
+
+  it('requires QA to review cost, duplication, and portfolio shape', () => {
+    const prompt = readFileSync('src/agents/pas_qa.md', 'utf-8');
+
+    expect(prompt).toContain('cheapest sufficient level');
+    expect(prompt).toContain('lower-level alternative');
+    expect(prompt).toContain('duplicat');
+    expect(prompt).toContain('HEALTHY_PYRAMID');
+    expect(prompt).toContain('TOP_HEAVY');
+    expect(prompt).toContain('INVERTED');
+    expect(prompt).toContain('test_strategy');
+    expect(prompt).toContain('<test_strategy_review>');
+  });
+
+  it('requires the Lead plan to assign a test level and rationale', () => {
+    const prompt = readFileSync('src/agents/Pulsar Agent Squad.md', 'utf-8');
+
+    expect(prompt).toContain('test level');
+    expect(prompt).toContain('cheapest sufficient');
+    expect(prompt).toContain('E2E justification');
+  });
+
+  it('defines pyramid shape as a qualitative invariant without fixed ratios', () => {
+    const prd = readFileSync('prd.md', 'utf-8');
+
+    expect(prd).toContain('clearly pyramidal');
+    expect(prd).toContain('fixed numerical ratio');
+    expect(prd).toContain('cheapest sufficient level');
+  });
+});

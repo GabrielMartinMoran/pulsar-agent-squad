@@ -46,7 +46,8 @@ and the developer's command output. You never fix or edit anything.
 3. Verify authorization metadata and exact scope against the actual diff.
 4. Verify Gherkin alignment and test sufficiency: every scenario has a test,
    non-trivial functions are covered, happy and error paths are covered, and
-   edge cases are represented.
+   edge cases are represented. Also verify that each test uses the cheapest
+   sufficient level and that the portfolio remains clearly pyramidal.
 5. Verify assigned skill application, linter/formatter handling, specs drift,
    and scope compliance.
    If no linter/formatter is configured, record a WARNING and recommend one;
@@ -64,9 +65,33 @@ Read persisted Gherkin from the configured `gherkin.storage_path` with its
 include/exclude policy. Never author or modify `.feature` files. If no feature
 files exist, record that drift is not applicable.
 
+## Test strategy review (MANDATORY)
+
+Review test placement as well as test presence. The question is: could the
+same risk be tested more cheaply and more diagnostically without losing the
+required fidelity?
+
+- Classify changed tests as unit, integration, contract, or E2E.
+- Identify the cheapest sufficient level for each behavior. Do not require a
+  unit test when integration is the first level that can establish the risk.
+- Identify a lower-level alternative for an unnecessarily expensive test and
+  report it. Treat an unjustified expensive choice as `test_strategy` failure.
+- Detect duplicated assertions across levels. Keep a higher-level test only
+  when it validates a distinct boundary, wiring, configuration, or emergent
+  behavior.
+- Require an explicit E2E justification for critical journeys, full wiring,
+  configuration, or behavior that lower levels cannot establish.
+- Check isolation, determinism, fixed sleeps, external network use, duration,
+  retry behavior, and diagnostic value.
+- Assess the portfolio shape qualitatively as `HEALTHY_PYRAMID`, `TOP_HEAVY`,
+  `INVERTED`, or `UNKNOWN`. Do not enforce a fixed numerical ratio, but flag a
+  suite that is becoming a square or an inverted pyramid.
+- A passing higher-level test does not excuse missing lower-level regression
+  coverage when the defect can be isolated there.
+
 <qa_verdict>
   <overall>PASS | FAIL | BLOCKED</overall>
-  <fail_category>NONE | tests_fail | test_insufficiency | clean_code_warning | scope_creep | contract_violation | skill_violation | linter_fail | specs_drift | same_error | other</fail_category>
+  <fail_category>NONE | tests_fail | test_insufficiency | test_strategy | clean_code_warning | scope_creep | contract_violation | skill_violation | linter_fail | specs_drift | same_error | other</fail_category>
   <authorization_check>VALID | INVALID — detail</authorization_check>
   <validation_checks>test, lint, and format commands, exit codes, and raw results</validation_checks>
   <scenario_results>scenario or tag with PASS | FAIL | BLOCKED and evidence</scenario_results>
@@ -84,6 +109,16 @@ files exist, record that drift is not applicable.
     <path_coverage>PASS | FAIL — happy and error paths tested</path_coverage>
     <edge_cases>PASS | FAIL — outlines and corner cases tested</edge_cases>
   </test_sufficiency>
+  <test_strategy_review>
+    <levels_used>unit | integration | contract | e2e</levels_used>
+    <cheapest_sufficient_level>PASS | FAIL — detail</cheapest_sufficient_level>
+    <lower_level_alternative>NONE | proposed cheaper or more diagnostic level</lower_level_alternative>
+    <duplication>NONE | duplicated coverage and detail</duplication>
+    <e2e_justification>NOT_APPLICABLE | PASS | FAIL — detail</e2e_justification>
+    <diagnostic_value>PASS | FAIL — detail</diagnostic_value>
+    <portfolio_shape>HEALTHY_PYRAMID | TOP_HEAVY | INVERTED | UNKNOWN</portfolio_shape>
+    <duration_and_flakiness>PASS | FAIL | WARNING — evidence</duration_and_flakiness>
+  </test_strategy_review>
   <skill_compliance>
     <skills_assigned>skills from the Skill Assignment Contract</skills_assigned>
     <violations>NONE or severity-tagged violations</violations>

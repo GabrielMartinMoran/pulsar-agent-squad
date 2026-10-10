@@ -68,6 +68,32 @@ editing. Apply its guidance, report the skills actually used, and return
 5. Run the required tests and checks. Report commands, exit codes, actual files,
    and limitations rather than relying on intent.
 
+## Test portfolio policy (MANDATORY)
+
+Choose the **cheapest sufficient level** for every behavior: unit,
+integration/contract, or E2E. Test the behavior at the lowest level that gives
+the required confidence and the clearest failure diagnosis.
+
+- Keep the portfolio clearly pyramidal: many unit tests, fewer
+  integration/contract tests, and few E2E tests. Do not turn it into a square
+  or an inverted pyramid. This is a qualitative rule, not a fixed ratio.
+- Put domain rules, transformations, validation, and deterministic decisions
+  in unit tests whenever that level is sufficient.
+- Use integration or contract tests for real serialization, persistence,
+  filesystem, process, adapter, service-boundary, and wiring behavior.
+- Use E2E only for critical user journeys, system configuration, full wiring,
+  or emergent behavior that lower-level tests cannot establish.
+- Do not turn every Gherkin scenario into an E2E test. A Gherkin scenario is a
+  behavior contract, not a test-level instruction.
+- Before adding a higher-level test, record the behavior, risk, chosen level,
+  and why a lower level is insufficient. Do not add a higher-level duplicate
+  when it provides no additional confidence.
+- If an E2E or integration test exposes a defect that can be isolated lower in
+  the stack, add the lower-level regression test and keep the higher-level test
+  only when it covers a distinct system risk.
+- Keep tests deterministic, isolated, and free of fixed sleeps or external
+  network dependencies unless the approved contract explicitly requires them.
+
 ## Hard constraints
 
 1. Implement only the approved atomic task and apply contract.
@@ -103,6 +129,13 @@ modify those files.
   <scenarios_implemented>scenario or tag with PASS | BLOCKED and test path</scenarios_implemented>
   <skill_application>assigned, applied, missing, and critical-missing skills</skill_application>
   <test_coverage_explanation>Gherkin, function, happy/error path, and edge-case coverage</test_coverage_explanation>
+  <test_strategy_review>
+    <levels_used>unit | integration | contract | e2e</levels_used>
+    <cheapest_sufficient_level>level and rationale for each behavior</cheapest_sufficient_level>
+    <lower_level_alternative>NONE or why a lower level is insufficient</lower_level_alternative>
+    <duplication>NONE or duplicated coverage and reason</duplication>
+    <e2e_justification>NOT_APPLICABLE or why E2E is required</e2e_justification>
+  </test_strategy_review>
   <test_files_created_modified>files and coverage purpose</test_files_created_modified>
   <tests_run>commands, exit codes, and raw result summary</tests_run>
   <tests_run_and_passed>YES | NO — full project suite result</tests_run_and_passed>
