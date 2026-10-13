@@ -258,3 +258,46 @@ describe('built worker prompts: internal parallelism guards', () => {
     expect(developerPrompt).toContain('Keep ordered work strictly sequential');
   });
 });
+
+describe('built prompts: scenario tag policy', () => {
+  let leadPrompt = '';
+  let developerPrompt = '';
+  let qaPrompt = '';
+
+  beforeAll(async () => {
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    expect(result.exitCode).toBe(0);
+    leadPrompt = normalizeLeadPrompt(
+      readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
+    );
+    developerPrompt = normalizeWorkerPrompt(
+      readFileSync('dist/platforms/opencode/agents/pas_developer.md', 'utf-8'),
+    );
+    qaPrompt = normalizeWorkerPrompt(
+      readFileSync('dist/platforms/opencode/agents/pas_qa.md', 'utf-8'),
+    );
+  });
+
+  it('tags every scenario with exactly one class tag at the lightest reliable level', () => {
+    expect(leadPrompt).toContain('## Scenario tag policy');
+    expect(leadPrompt).toContain('exactly one class tag');
+    expect(leadPrompt).toContain(
+      '`@unit`, `@integration`, `@contract`, `@e2e`, or `@manual`',
+    );
+    expect(leadPrompt).toContain('lightest reliable level');
+    expect(leadPrompt).toContain('manual verification procedure');
+  });
+
+  it('implements tests at the class tag level and escalates instead of upgrading', () => {
+    expect(developerPrompt).toContain('at its class tag level');
+    expect(developerPrompt).toContain(
+      'escalate (`test_strategy`) instead of upgrading the test',
+    );
+    expect(developerPrompt).toContain('`@manual` scenarios are not automated');
+  });
+
+  it('verifies tests against the class tag and keeps manual procedures', () => {
+    expect(qaPrompt).toContain("Verify each scenario's tests against its class tag");
+    expect(qaPrompt).toContain('`@manual` scenarios keep their manual procedure');
+  });
+});

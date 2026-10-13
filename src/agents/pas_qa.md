@@ -75,6 +75,9 @@ Review test placement as well as test presence. The question is: could the
 same risk be tested more cheaply and more diagnostically without losing the
 required fidelity?
 
+- Verify each scenario's tests against its class tag: flag tests heavier than
+  the tag and coverage lighter than the tag, and confirm `@manual` scenarios
+  keep their manual procedure with no invented test.
 - Classify changed tests as unit, integration, contract, or E2E.
 - Identify the cheapest sufficient level for each behavior. Do not require a
   unit test when integration is the first level that can establish the risk.

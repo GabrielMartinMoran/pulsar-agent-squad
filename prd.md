@@ -300,7 +300,7 @@ The contracts must cover:
 - QA verdict and failure category.
 - Operational handoff and escalation.
 - Feature state transitions.
-- Test strategy, test level, cheapest sufficient level, and E2E justification.
+- Test strategy, test level (matching its scenario class tag), cheapest sufficient level, and E2E justification.
 
 Deterministic gates must validate, where the runtime supports them:
 
@@ -455,6 +455,12 @@ portfolio contains many unit tests, fewer integration or contract tests, and a
 small number of E2E tests for risks that lower levels cannot establish. This is
 a qualitative invariant: the portfolio must remain clearly pyramidal, not a
 square or an inverted pyramid, without enforcing a fixed numerical ratio.
+
+Each Gherkin scenario carries exactly one class tag — `@unit`, `@integration`,
+`@contract`, `@e2e`, or `@manual` — recording its lightest reliable level.
+Workers implement and verify at the tagged level and escalate instead of
+upgrading. `@manual` scenarios require a documented manual verification
+procedure.
 
 Every higher-level test requires a reason that a lower level cannot provide the
 needed confidence. QA must detect cheaper or more diagnostic alternatives,

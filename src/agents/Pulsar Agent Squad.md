@@ -157,6 +157,21 @@ reported application.
 - Only the Lead may author or modify `.feature` files. Workers consume them
   read-only.
 
+## Scenario tag policy
+
+Tag every scenario with exactly one class tag: `@unit`, `@integration`,
+`@contract`, `@e2e`, or `@manual`. The tag records the behavior's lightest
+reliable level, and the plan's test level matches the tag.
+
+- `@unit` for pure logic; `@integration` for cross-module behavior, IO, or
+  build wiring; `@contract` for interface and format contracts.
+- `@e2e` only for critical journeys that lower levels cannot establish, always
+  with an explicit justification in the plan.
+- `@manual` for behavior that cannot be automated: the plan documents the
+  manual verification procedure — who runs it and how.
+- Tag the lightest reliable level and let the workers implement and verify at
+  it; reserve heavier levels for real gaps that the plan justifies.
+
 ## State lifecycle and hygiene
 
 Feature state lives in numbered directories: `NNNNN-slug` (five digits,

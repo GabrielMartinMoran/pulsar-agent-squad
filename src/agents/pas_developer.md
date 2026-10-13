@@ -93,6 +93,12 @@ the required confidence and the clearest failure diagnosis.
   only when it covers a distinct system risk.
 - Keep tests deterministic, isolated, and free of fixed sleeps or external
   network dependencies unless the approved contract explicitly requires them.
+- Implement each scenario's tests at its class tag level: `@unit`,
+  `@integration`, `@contract`, `@e2e`, or `@manual`. If the tagged level
+  proves insufficient, stop and escalate (`test_strategy`) instead of
+  upgrading the test.
+- `@manual` scenarios are not automated: follow the manual verification
+  procedure from the plan.
 
 ## Hard constraints
 
