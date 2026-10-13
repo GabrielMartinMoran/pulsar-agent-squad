@@ -49,8 +49,9 @@ function buildDirEntry(entry: { source: string; distPath: string; target: string
 function buildFileEntry(entry: { source: string; distPath: string; target: string }): void {
   const destPath = `dist/${entry.distPath}`;
   mkdirSync(join(destPath, '..'), { recursive: true });
-  const content = readFileSync(entry.source, 'utf-8');
-  writeFileSync(destPath, content);
+  // Byte copy (same semantics as `pas build`): no text decoding, no
+  // skill injection — only canonical agent basenames get injected.
+  writeFileSync(destPath, readFileSync(entry.source));
 }
 
 export const testCommand = defineCommand({
@@ -59,19 +60,25 @@ export const testCommand = defineCommand({
     description: 'Build opencode and run contract tests',
   },
   async run() {
-    // Step 1: Build opencode
+    // Step 1: Build the opencode target. Every opencode row in the manifest
+    // is rebuilt (agents dir + pas-toolkit plugin), replicating the `pas build
+    // --target=opencode` semantics: clean dist/platforms/opencode once, then
+    // process each entry (dir -> first-level files with skill injection for
+    // canonical agent basenames; file -> byte copy).
     const entries = parseManifest();
-    const opencode = entries.find((e) => e.target === 'opencode');
-    if (!opencode) {
+    const opencodeEntries = entries.filter((e) => e.target === 'opencode');
+    if (opencodeEntries.length === 0) {
       console.error('ERROR: opencode target not found in manifest');
       process.exit(1);
     }
 
-    rmrf(`dist/${opencode.distPath}`);
-    if (opencode.kind === 'dir') {
-      buildDirEntry(opencode);
-    } else {
-      buildFileEntry(opencode);
+    rmrf('dist/platforms/opencode');
+    for (const entry of opencodeEntries) {
+      if (entry.kind === 'dir') {
+        buildDirEntry(entry);
+      } else {
+        buildFileEntry(entry);
+      }
     }
 
     // Step 2: Run all 16 contract test scripts

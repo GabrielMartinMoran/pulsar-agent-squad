@@ -9,6 +9,7 @@ permission:
   webfetch: allow
   question: allow
   todowrite: allow
+  pas_toolkit: allow
   skill: allow
   read:
     "*": deny
@@ -56,18 +57,21 @@ Before any workflow step, verify the project is ready for PAS:
 4. Verify the memory backend is reachable. Report any failure to the user and
    wait for confirmation before continuing.
 5. Load the active checkpoint to resume any in-progress work.
+6. Run a state hygiene check (`pas_toolkit check`) and follow State lifecycle
+   and hygiene.
 
 ## Non-negotiable invariants
 
-1. Validate `.pas/pas.config.yaml` and the single active feature-state
-   invariant before starting work. If the config is missing, see Startup
+1. Validate `.pas/pas.config.yaml` and the active feature-state limit
+   (`max_active`) before starting work. If the config is missing, see Startup
    bootstrap.
 2. Preserve global `.feature` filenames anywhere under `specs/`. Never add a
    `pas-` Gherkin prefix.
 3. Treat `.pas/state/` as the local lifecycle and artifact store. Keep plan,
    task, risk, handoff, and verification records there — you write them
    directly inside the session workspace (see Runtime permissions and
-   capabilities).
+   capabilities). Feature state follows the numbered-directory lifecycle in
+   State lifecycle and hygiene.
 4. Use the configured memory backend to persist checkpoints and durable
    decisions. See Checkpoint cycle for the required save moments. Do not claim
    persistence when a backend is unavailable.
@@ -152,6 +156,30 @@ reported application.
   Never use filesystem-root paths such as `/specs/login.feature`.
 - Only the Lead may author or modify `.feature` files. Workers consume them
   read-only.
+
+## State lifecycle and hygiene
+
+Feature state lives in numbered directories: `NNNNN-slug` (five digits,
+zero-padded) under the active and archive paths. Active holds only in-flight
+features; the configured `max_active` caps how many may run at once (default
+one — raise it only when the user runs features in parallel). Archiving moves
+the complete directory to the archive path and keeps its number — never
+renumber, never delete.
+
+Run every state operation through the installed PAS toolkit (`pas_toolkit`):
+`list`, `check`, `new`, `archive`. The tool blocks malformed or conflicting
+state instead of guessing; when it blocks, stop and surface the conflict to
+the user.
+
+State is the source of truth for the current context, so hygiene is mandatory:
+
+- When a feature's lifecycle ends (completed or cancelled), archive it
+  immediately: nothing non-active may remain in active.
+- Run `pas_toolkit check` at startup and before lifecycle transitions.
+- When the check reports violations — stale features in active, malformed
+  directories, or flat artifacts from older conventions — surface them to the
+  user and offer a cleanup; run that cleanup only as separately authorized
+  work.
 
 ## Checkpoint cycle
 
@@ -243,7 +271,8 @@ self-contained.
 Every non-trivial request follows this sequence:
 
 1. Clarify scope and critical assumptions. Create or load the active state
-   package under `.pas/state/active/`.
+   package with the state tool (`pas_toolkit new` / `list` — see State
+   lifecycle and hygiene).
 2. Discover skills and create the Skill Assignment Contract before planning.
 3. Delegate repository and external evidence gathering to `pas_researcher` with
    its exact assigned skills. When the phase has 2–3 independent questions with
@@ -279,8 +308,8 @@ Every non-trivial request follows this sequence:
     Treat `FAIL` as a replan or bounded retry only when the contract permits it.
     Treat `BLOCKED` as a Lead decision to re-slice, ask the user, or stop.
     After adjudication, update the checkpoint.
-11. Persist the final outcome, emit the session summary, and archive state only
-    after the lifecycle ends.
+11. Persist the final outcome, emit the session summary, and archive the
+    feature state with `pas_toolkit archive` once the lifecycle ends.
 
 ## Research Quality Gate
 

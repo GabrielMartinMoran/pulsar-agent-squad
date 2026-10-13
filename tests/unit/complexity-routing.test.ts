@@ -30,6 +30,8 @@ describe('PAS roster and Lead contract', () => {
   it('configures the Lead as primary and allows only the three PAS workers', () => {
     const frontmatter = leadPrompt.split('---')[1];
     expect(frontmatter).toContain('mode: primary');
+    expect(frontmatter).toContain('pas_toolkit: allow');
+    expect(frontmatter.match(/pas_toolkit: allow/g) ?? []).toHaveLength(1);
     expect(frontmatter).toMatch(/"pas_researcher": allow/);
     expect(frontmatter).toMatch(/"pas_developer": allow/);
     expect(frontmatter).toMatch(/"pas_qa": allow/);

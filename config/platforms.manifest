@@ -1,5 +1,6 @@
 # target|kind|source|dist_path|install_path
 opencode|dir|src/agents|platforms/opencode/agents|.config/opencode/agents
+opencode|file|src/tools/pas-toolkit.ts|platforms/opencode/plugins/pas-toolkit.ts|.config/opencode/plugins
 cursor|file|src/templates/platforms/cursor/AGENTS.md.tmpl|platforms/cursor/AGENTS.md|.cursor/agents
 cursor-cli-agent|file|src/templates/platforms/cursor-cli-agent/AGENTS.md.tmpl|platforms/cursor-cli-agent/AGENTS.md|.cursor-cli-agent
 claude-code|file|src/templates/platforms/claude-code/CLAUDE.md.tmpl|platforms/claude-code/CLAUDE.md|.claude

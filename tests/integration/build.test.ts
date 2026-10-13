@@ -56,6 +56,18 @@ describe('build command', () => {
     expect(existsSync('dist/platforms/cursor/AGENTS.md')).toBe(true);
   });
 
+  it('should build the pas-toolkit plugin byte-identical to its source', async () => {
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    expect(result.exitCode).toBe(0);
+
+    const builtPath = 'dist/platforms/opencode/plugins/pas-toolkit.ts';
+    expect(existsSync(builtPath)).toBe(true);
+
+    const built = readFileSync(builtPath);
+    const source = readFileSync('src/tools/pas-toolkit.ts');
+    expect(built.equals(source)).toBe(true);
+  });
+
   it('should fail for unknown target', async () => {
     let exitCode = 0;
     try {
@@ -169,5 +181,40 @@ describe('built Lead prompt: runtime permission contract', () => {
     expect(leadPrompt).toContain('delegate the one-time `.pas/` bootstrap to `pas_developer`');
     expect(leadPrompt).toContain('Never test a cross-directory `.pas/` write');
     expect(leadPrompt).toContain('banner concerns memory continuity, not permissions');
+  });
+});
+
+describe('built Lead prompt: state lifecycle and hygiene contract', () => {
+  let leadPrompt = '';
+
+  beforeAll(async () => {
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    expect(result.exitCode).toBe(0);
+    leadPrompt = normalizeLeadPrompt(
+      readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
+    );
+  });
+
+  it('defines the numbered-directory lifecycle section', () => {
+    expect(leadPrompt).toContain('## State lifecycle and hygiene');
+    expect(leadPrompt).toContain('five digits, zero-padded');
+    expect(leadPrompt).toContain('Active holds only in-flight features');
+    expect(leadPrompt).toContain('never renumber, never delete');
+  });
+
+  it('routes state operations through the installed toolkit with hygiene duties', () => {
+    expect(leadPrompt).toContain('through the installed PAS toolkit');
+    expect(leadPrompt).toContain(
+      'Run `pas_toolkit check` at startup and before lifecycle transitions',
+    );
+    expect(leadPrompt).toContain('offer a cleanup');
+    expect(leadPrompt).toContain('separately authorized work');
+  });
+
+  it('grants the toolkit permission and archives through the tool', () => {
+    expect(leadPrompt).toContain('pas_toolkit: allow');
+    expect(leadPrompt).toContain(
+      'archive the feature state with `pas_toolkit archive`',
+    );
   });
 });

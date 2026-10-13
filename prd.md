@@ -1,7 +1,7 @@
 # Product requirements document: Pulsar Agent Squad
 
 **Status:** Draft  
-**Feature ID:** `0001`  
+**Feature ID:** `00001`  
 **Feature slug:** `pulsar-agent-squad`  
 **Product:** Pulsar Agent Squad (PAS)  
 **Reference repository:** Nova Agent Squad (NAS)  
@@ -200,7 +200,7 @@ adjudicates ambiguous or high-risk results.
 Every non-trivial PAS run follows these phases:
 
 1. Validate `.pas/pas.config.yaml` and the feature-state invariant.
-2. Create or load the single active feature state.
+2. Create or load up to `max_active` (default one) active feature states.
 3. Clarify critical assumptions with the user.
 4. Delegate repository and external research to researcher light.
 5. Validate research sufficiency in the PAS Lead.
@@ -234,7 +234,7 @@ Feature state is stored as follows:
 ├── pas.config.yaml
 └── state/
     ├── active/
-    │   └── <NNNN>-<feature-slug>/
+    │   └── <NNNNN>-<feature-slug>/
     │       ├── state.md
     │       ├── prd.md
     │       ├── research.md
@@ -242,21 +242,28 @@ Feature state is stored as follows:
     │       ├── tasks.md
     │       └── validation.md
     └── archived/
-        └── <NNNN>-<feature-slug>/
+        └── <NNNNN>-<feature-slug>/
 ```
 
 The lifecycle rules are mandatory:
 
-- At most one feature directory may exist in `state/active/`.
-- Feature directories use a four-digit number beginning at `0001`.
-- Before creating a new active feature, PAS scans `state/archived/` and uses
-  the highest valid number plus one.
-- If no archived feature exists, PAS uses `0001`.
+- At most `max_active` (default one) feature directories may exist in
+  `state/active/`.
+- Feature directories use a five-digit number beginning at `00001`.
+- Before creating a new active feature, PAS scans `state/archived/` and
+  `state/active/` and uses the highest valid number plus one.
+- If no feature exists in either directory, PAS uses `00001`.
 - Archiving moves the complete directory from `active/` to `archived/`.
 - Archiving never renumbers or copies a feature.
-- Duplicate numbers, malformed directories, or multiple active features block
-  state mutation.
+- Duplicate numbers, malformed directories, or an active count above
+  `max_active` block state mutation.
 - PAS must never delete an existing feature to resolve a state conflict.
+- The Lead runs every state operation through the installed `pas_toolkit`
+  tool: `list`, `check`, `new`, and `archive`. The tool blocks malformed or
+  conflicting state instead of guessing.
+- When the state check reports hygiene violations, the Lead must surface them
+  to the user and offer a cleanup. The Lead runs that cleanup only as
+  separately authorized work.
 
 ## Local artifacts
 
@@ -370,22 +377,24 @@ PAS must load `.pas/pas.config.yaml` before normal workflow execution and stop
 when the configuration is invalid or the required state directories cannot be
 validated.
 
-### FR-002: Enforce one active feature
+### FR-002: Enforce the active feature limit
 
-PAS must allow at most one feature directory under `.pas/state/active/`. Any
-attempt to create or continue with multiple active features must return a
-blocking error without deleting or moving existing state.
+PAS must allow at most `max_active` (default one) feature directories under
+`.pas/state/active/`. Any attempt to create or continue with more active
+features than `max_active` must return a blocking error without deleting or
+moving existing state.
 
 ### FR-003: Allocate feature IDs safely
 
-PAS must inspect archived feature directories, validate their numeric prefixes,
-and allocate the next four-digit ID. It must block on malformed or conflicting
-archived state rather than guessing.
+PAS must inspect the archived and active feature directories, validate their
+numeric prefixes, and allocate the next five-digit ID. It must block on
+malformed or conflicting state rather than guessing.
 
 ### FR-004: Preserve feature state on archive
 
-PAS must move the complete active feature directory to archived without changing
-its ID, references, or artifact contents.
+PAS must move the complete active feature directory to archived. The move must
+never renumber or delete a feature, and it must not change the feature's ID,
+references, or artifact contents.
 
 ### FR-005: Preserve global specifications
 

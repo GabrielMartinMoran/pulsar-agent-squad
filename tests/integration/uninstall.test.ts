@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
-import { existsSync, mkdirSync, rmSync, writeFileSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readdirSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
 import { $ } from 'bun';
 
@@ -52,5 +53,64 @@ describe('uninstall command', () => {
     const result = await $`bun run ${CLI_ENTRY} uninstall --dry-run --dest=${tempAgentsDir}`.quiet();
     const stdout = result.stdout.toString();
     expect(stdout).toContain('Uninstalling');
+  });
+});
+
+describe('uninstall command: pas-toolkit plugin', () => {
+  let fixtureRoot = '';
+  let fixtureAgentsDir = '';
+  let fixturePluginsDir = '';
+  let fixturePlugin = '';
+  let unrelatedPlugin = '';
+
+  beforeAll(() => {
+    fixtureRoot = mkdtempSync(join(tmpdir(), 'pas-uninstall-fixture-'));
+    fixtureAgentsDir = join(fixtureRoot, 'agents');
+    fixturePluginsDir = join(fixtureRoot, 'plugins');
+    mkdirSync(fixtureAgentsDir, { recursive: true });
+    mkdirSync(fixturePluginsDir, { recursive: true });
+
+    const agentContent = '---\nname: test\n---\n# Test';
+    for (const agent of [
+      'Pulsar Agent Squad.md',
+      'pas_researcher.md',
+      'pas_developer.md',
+      'pas_qa.md',
+    ]) {
+      writeFileSync(join(fixtureAgentsDir, agent), agentContent);
+    }
+
+    fixturePlugin = join(fixturePluginsDir, 'pas-toolkit.ts');
+    writeFileSync(fixturePlugin, '// pas-toolkit fixture\n');
+    unrelatedPlugin = join(fixturePluginsDir, 'unrelated-plugin.js');
+    writeFileSync(unrelatedPlugin, '// unrelated plugin fixture\n');
+  });
+
+  afterAll(() => {
+    if (fixtureRoot) {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('should print the plugin DRY-RUN line and keep every fixture file', async () => {
+    const result = await $`bun run ${CLI_ENTRY} uninstall --dry-run --dest=${fixtureAgentsDir} --plugins-dest=${fixturePluginsDir}`.quiet();
+    expect(result.exitCode).toBe(0);
+    const stdout = result.stdout.toString();
+    expect(stdout).toContain(`DRY-RUN: rm '${fixturePlugin}'`);
+
+    expect(existsSync(fixturePlugin)).toBe(true);
+    expect(existsSync(unrelatedPlugin)).toBe(true);
+    expect(existsSync(join(fixtureAgentsDir, 'pas_developer.md'))).toBe(true);
+  });
+
+  it('should remove the plugin file but keep the plugins directory and siblings', async () => {
+    const result = await $`bun run ${CLI_ENTRY} uninstall --dest=${fixtureAgentsDir} --plugins-dest=${fixturePluginsDir}`.quiet();
+    expect(result.exitCode).toBe(0);
+    const stdout = result.stdout.toString();
+    expect(stdout).toContain(`✓ Removed: ${fixturePlugin}`);
+
+    expect(existsSync(fixturePlugin)).toBe(false);
+    expect(existsSync(fixturePluginsDir)).toBe(true);
+    expect(existsSync(unrelatedPlugin)).toBe(true);
   });
 });

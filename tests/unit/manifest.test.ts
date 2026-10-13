@@ -2,9 +2,23 @@ import { describe, expect, it } from 'bun:test';
 import { parseManifest } from '../../src/cli/lib/manifest';
 
 describe('parseManifest', () => {
-  it('should return all 8 entries from platforms.manifest', () => {
+  it('should return all 9 entries from platforms.manifest', () => {
     const entries = parseManifest();
-    expect(entries).toHaveLength(8);
+    expect(entries).toHaveLength(9);
+  });
+
+  it('should have correct fields for the opencode pas-toolkit plugin entry', () => {
+    const entries = parseManifest();
+    const plugin = entries.find((e) => e.target === 'opencode' && e.kind === 'file');
+    expect(plugin).toBeDefined();
+    expect(plugin!.target).toBe('opencode');
+    expect(plugin!.kind).toBe('file');
+    expect(plugin!.source).toBe('src/tools/pas-toolkit.ts');
+    expect(plugin!.distPath).toBe('platforms/opencode/plugins/pas-toolkit.ts');
+    // installPath is the CONTAINING directory: copyFiles derives the
+    // basename from the source, so the final path is
+    // ~/.config/opencode/plugins/pas-toolkit.ts.
+    expect(plugin!.installPath).toBe('.config/opencode/plugins');
   });
 
   it('should have correct fields for opencode entry', () => {
