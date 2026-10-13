@@ -132,3 +132,42 @@ describe('built Lead prompt: parallel research contract', () => {
     expect(leadPrompt).toContain('Planning Quality Gate');
   });
 });
+
+describe('built Lead prompt: runtime permission contract', () => {
+  let leadPrompt = '';
+
+  beforeAll(async () => {
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    expect(result.exitCode).toBe(0);
+    leadPrompt = normalizeLeadPrompt(
+      readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
+    );
+  });
+
+  it('treats a denial as configured policy, never as an incident', () => {
+    expect(leadPrompt).toContain('## Runtime permissions and capabilities');
+    expect(leadPrompt).toContain('is a configured policy, not an error');
+    expect(leadPrompt).toContain('Never probe, retry, or investigate your permissions');
+  });
+
+  it('states the direct access profile, including compound shell rules', () => {
+    expect(leadPrompt).toContain('`read` and `edit`: `.pas/**` and `specs/**/*.feature`');
+    expect(leadPrompt).toContain(
+      'single commands matching `./pas *`, `git log *`, `git diff *`, or exactly `git status`',
+    );
+    expect(leadPrompt).toContain('compound commands pass only when every part is allowlisted');
+    expect(leadPrompt).toContain('`subagent`: `pas_researcher`, `pas_developer`, `pas_qa`');
+  });
+
+  it('routes out-of-allowlist work to workers without re-litigating boundaries', () => {
+    expect(leadPrompt).toContain('It is read-only and has no shell');
+    expect(leadPrompt).toContain('Do not re-litigate a boundary mid-run');
+    expect(leadPrompt).toContain('Those capabilities never transfer to you');
+  });
+
+  it('honors the workspace boundary for cross-directory PAS work', () => {
+    expect(leadPrompt).toContain('delegate the one-time `.pas/` bootstrap to `pas_developer`');
+    expect(leadPrompt).toContain('Never test a cross-directory `.pas/` write');
+    expect(leadPrompt).toContain('banner concerns memory continuity, not permissions');
+  });
+});
