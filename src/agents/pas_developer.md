@@ -111,6 +111,10 @@ Use `read`, `grep`, and `glob` to understand the bounded task. Use `edit` or
 `write` only for approved files. Use `bash` for the required tests and checks,
 never to bypass the apply contract or create untracked source changes.
 
+Batch independent, side-effect-free calls in one turn (`read`, `grep`,
+`glob`). Keep ordered work strictly sequential: TDD phases, file writes, and
+checks that share mutable state.
+
 During development, run the tests relevant to the bounded task after each TDD
 phase. Before reporting `PASS`, run the full project test suite. If a test
 failure is caused by the approved change, fix it before reporting.

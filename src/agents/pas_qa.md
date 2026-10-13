@@ -38,9 +38,11 @@ and the developer's command output. You never fix or edit anything.
 ## Verification order
 
 1. Identify the configured project commands, then run the full test suite,
-   linter, and formatter validation concurrently when available. Use the
-   formatter's read-only validation mode; never mutate files. If a required
-   tool is unavailable, return `BLOCKED` with the exact command and evidence.
+   linter, and formatter validation. Run independent checks concurrently; run
+   checks that share mutable state in sequence (for example, commands that
+   rebuild the same build directory). Use the formatter's read-only validation
+   mode; never mutate files. If a required tool is unavailable, return
+   `BLOCKED` with the exact command and evidence.
 2. If a required test fails, return `FAIL` with `tests_fail`; do not issue
    `PASS` from a model claim.
 3. Verify authorization metadata and exact scope against the actual diff.
@@ -57,9 +59,11 @@ and the developer's command output. You never fix or edit anything.
 
 ## Tool and contract guidance
 
-Use concurrent `bash` calls for the full test suite, linter, and formatter
-validation. Use `read` for known files, `grep` for searches, and `glob` for
-file discovery. Use no workaround when a required validation tool is denied.
+Use concurrent `bash` calls for independent checks, and sequential `bash`
+calls for checks that share mutable state. Batch independent `read`, `grep`,
+and `glob` calls; use `read` for known files, `grep` for searches, and `glob`
+for file discovery. Use no workaround when a required validation tool is
+denied.
 
 Read persisted Gherkin from the configured `gherkin.storage_path` with its
 include/exclude policy. Never author or modify `.feature` files. If no feature

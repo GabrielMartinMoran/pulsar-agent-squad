@@ -218,3 +218,43 @@ describe('built Lead prompt: state lifecycle and hygiene contract', () => {
     );
   });
 });
+
+/**
+ * The worker prompts are prose; line wrapping inside the built artifacts is
+ * not part of their contract. Normalize whitespace so the assertions below
+ * pin meaning instead of layout.
+ */
+function normalizeWorkerPrompt(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+describe('built worker prompts: internal parallelism guards', () => {
+  let qaPrompt = '';
+  let developerPrompt = '';
+
+  beforeAll(async () => {
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    expect(result.exitCode).toBe(0);
+    qaPrompt = normalizeWorkerPrompt(
+      readFileSync('dist/platforms/opencode/agents/pas_qa.md', 'utf-8'),
+    );
+    developerPrompt = normalizeWorkerPrompt(
+      readFileSync('dist/platforms/opencode/agents/pas_developer.md', 'utf-8'),
+    );
+  });
+
+  it('runs independent QA checks concurrently and shared-state checks in sequence', () => {
+    expect(qaPrompt).toContain('Run independent checks concurrently');
+    expect(qaPrompt).toContain('share mutable state in sequence');
+  });
+
+  it('batches independent QA read, grep, and glob calls', () => {
+    expect(qaPrompt).toContain('concurrent `bash` calls for independent checks');
+    expect(qaPrompt).toContain('Batch independent `read`, `grep`, and `glob` calls');
+  });
+
+  it('batches side-effect-free developer calls while ordered work stays sequential', () => {
+    expect(developerPrompt).toContain('Batch independent, side-effect-free calls');
+    expect(developerPrompt).toContain('Keep ordered work strictly sequential');
+  });
+});
