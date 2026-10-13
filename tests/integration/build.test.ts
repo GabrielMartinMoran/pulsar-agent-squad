@@ -68,3 +68,67 @@ describe('build command', () => {
 
 
 });
+
+/**
+ * The Lead prompt is prose; line wrapping inside the built artifact is not
+ * part of its contract. Normalize whitespace so the assertions below pin
+ * meaning instead of layout.
+ */
+function normalizeLeadPrompt(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+describe('built Lead prompt: parallel research contract', () => {
+  let leadPrompt = '';
+
+  beforeAll(async () => {
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    expect(result.exitCode).toBe(0);
+    leadPrompt = normalizeLeadPrompt(
+      readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
+    );
+  });
+
+  it('runs research as one background batch with disjoint scopes', () => {
+    expect(leadPrompt).toContain('## Parallel research batch');
+    expect(leadPrompt).toContain('one `pas_researcher` per independent question');
+    expect(leadPrompt).toContain('background: true');
+    expect(leadPrompt).toContain('disjoint scopes');
+    expect(leadPrompt).toContain('must not overlap in files or topics');
+    expect(leadPrompt).toContain('Start with 2 researchers');
+    expect(leadPrompt).toContain(
+      'extend to 3 only when every question is clearly independent',
+    );
+    expect(leadPrompt).toContain('overlapping or dependent questions stay sequential');
+    expect(leadPrompt).toContain('one researcher at a time');
+    expect(leadPrompt).toContain('dispatch them as one background batch');
+  });
+
+  it('processes grouped or individual batch completions before the gate', () => {
+    expect(leadPrompt).toContain('<subagent sessionID=');
+    expect(leadPrompt).toContain('individually or grouped');
+    expect(leadPrompt).toContain(
+      'Process all completions before opening the Research Quality Gate',
+    );
+    expect(leadPrompt).toContain('one progress line per completed subagent');
+    expect(leadPrompt).toContain('merged evidence');
+  });
+
+  it('falls back to sequential foreground research when background fails', () => {
+    expect(leadPrompt).toContain('fall back to sequential foreground research');
+    expect(leadPrompt).toContain('Never claim parallel execution');
+  });
+
+  it('keeps developer and QA delegations strictly sequential', () => {
+    expect(leadPrompt).toContain('one at a time outside the research batch');
+    expect(leadPrompt).toContain('developer and QA delegations remain strictly sequential');
+    expect(leadPrompt).toContain('one atomic task at a time');
+    expect(leadPrompt).not.toContain('one at a time. After');
+  });
+
+  it('keeps the approval gate and planning gates intact', () => {
+    expect(leadPrompt).toContain('Implementation plan is ready. Do you');
+    expect(leadPrompt).toContain('Research Quality Gate');
+    expect(leadPrompt).toContain('Planning Quality Gate');
+  });
+});

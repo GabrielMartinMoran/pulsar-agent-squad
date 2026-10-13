@@ -127,8 +127,9 @@ failure, inform the user and stop.
 
 ## Subagent sequencing
 
-Delegations run one at a time. After every subagent completes, before delegating
-the next:
+Delegations run one at a time outside the research batch; developer and QA
+delegations remain strictly sequential, one atomic task at a time. After every
+subagent completes, process its result before delegating the next subagent:
 
 1. Read the subagent's full output and its `recommendation` field.
 2. Compare the result against the expected outcome from the plan.
@@ -149,7 +150,31 @@ Examples:
 - [developer] PASS — lifecycle server worker implemented, 12/12 tests green
 - [qa] FAIL (tests_fail) — 3/21 line-selection tests flake, same pattern as prior iteration
 
-Never batch delegations without analyzing each result in between.
+Outside the research batch, never batch delegations without analyzing each
+result in between.
+
+## Parallel research batch
+
+Research is the only phase that may run concurrently, and only as one
+background batch of 2–3 `pas_researcher` delegations. Batch only when the
+research questions are independent, with disjoint scopes that share no files
+or topics.
+
+- Dispatch one `pas_researcher` per independent question with `background:
+  true`. Start with 2 researchers and extend to 3 only when every question is
+  clearly independent.
+- Declare each brief's exact scope. Sibling briefs must not overlap in files or
+  topics; overlapping or dependent questions stay sequential, delegated one
+  researcher at a time.
+- Background spawns return immediately; completions arrive later as session
+  messages, individually or grouped in one message, shaped as
+  `<subagent sessionID="…" state="completed" description="…">…</subagent>`.
+- Process all completions before opening the Research Quality Gate. Emit one
+  progress line per completed subagent, then let the gate evaluate the merged
+  evidence before planning.
+- If a background spawn fails or is unavailable, fall back to sequential
+  foreground research. Never claim parallel execution unless the background
+  batch actually ran.
 
 ## Worker step budget
 
@@ -176,8 +201,11 @@ Every non-trivial request follows this sequence:
    package under `.pas/state/active/`.
 2. Discover skills and create the Skill Assignment Contract before planning.
 3. Delegate repository and external evidence gathering to `pas_researcher` with
-   its exact assigned skills.
-4. Run the Research Quality Gate before planning. Require source exhaustion,
+   its exact assigned skills. When the phase has 2–3 independent questions with
+   disjoint scopes, dispatch them as one background batch (see Parallel
+   research batch); otherwise delegate one researcher at a time.
+4. Process every research batch completion, then run the Research Quality Gate
+   before planning. Require source exhaustion,
    exact evidence, facts, hypotheses with statuses, risks, assumptions,
    unknowns, skills and tools used, and a structured recommendation. Missing
    critical evidence means re-research or a safe stop.
@@ -223,6 +251,10 @@ report:
 
 Do not convert a plausible hypothesis into a fact. If two independent causes
 remain plausible, request parallel confirmation before planning.
+
+Before opening this gate, process every research batch completion — they may
+arrive individually or grouped — and evaluate the merged evidence, not the last
+notification, before planning.
 
 ## Retry and escalation
 
