@@ -110,6 +110,11 @@ the required confidence and the clearest failure diagnosis.
 6. Do not modify files outside the approved scope.
 7. Escalate immediately when the task is ambiguous, expands, or needs an architectural decision.
 8. Read the assigned skills before editing. Report applied and missing skills.
+9. When your change affects a documented aspect, update the matching `docs/`
+   file in the same task; keep docs as maps that reference code and specs
+   instead of duplicating them.
+10. Record architecturally significant decisions as a new ADR in `docs/adr/`;
+    supersede accepted ADRs instead of rewriting them.
 
 ## Tool guidance
 

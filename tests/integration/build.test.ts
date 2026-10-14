@@ -163,7 +163,7 @@ describe('built Lead prompt: runtime permission contract', () => {
   });
 
   it('states the direct access profile, including compound shell rules', () => {
-    expect(leadPrompt).toContain('`read` and `edit`: `.pas/**` and `specs/**/*.feature`');
+    expect(leadPrompt).toContain('`read`: `.pas/**`, `specs/**/*.feature`, and `docs/**`');
     expect(leadPrompt).toContain(
       'single commands matching `./pas *`, `git log *`, `git diff *`, or exactly `git status`',
     );
@@ -299,5 +299,51 @@ describe('built prompts: scenario tag policy', () => {
   it('verifies tests against the class tag and keeps manual procedures', () => {
     expect(qaPrompt).toContain("Verify each scenario's tests against its class tag");
     expect(qaPrompt).toContain('`@manual` scenarios keep their manual procedure');
+  });
+});
+
+describe('built prompts: project documentation contract', () => {
+  let leadPrompt = '';
+  let developerPrompt = '';
+  let qaPrompt = '';
+
+  beforeAll(async () => {
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    expect(result.exitCode).toBe(0);
+    leadPrompt = normalizeLeadPrompt(
+      readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
+    );
+    developerPrompt = normalizeWorkerPrompt(
+      readFileSync('dist/platforms/opencode/agents/pas_developer.md', 'utf-8'),
+    );
+    qaPrompt = normalizeWorkerPrompt(
+      readFileSync('dist/platforms/opencode/agents/pas_qa.md', 'utf-8'),
+    );
+  });
+
+  it('documents living docs as maps that reference their sources', () => {
+    expect(leadPrompt).toContain('## Project documentation');
+    expect(leadPrompt).toContain('are maps, not manuals');
+    expect(leadPrompt).toContain('superseded, never rewritten');
+    expect(leadPrompt).toContain('ubiquitous-language glossary');
+    expect(leadPrompt).toContain('reference Figma when the project uses it');
+    expect(leadPrompt).toContain('feature groups with pointers to their Gherkin specs');
+  });
+
+  it('extends the Lead read profile to docs/', () => {
+    expect(leadPrompt).toContain(
+      '`read`: `.pas/**`, `specs/**/*.feature`, and `docs/**`',
+    );
+  });
+
+  it('requires the developer to update docs in the same task', () => {
+    expect(developerPrompt).toContain('keep docs as maps that reference code and specs');
+    expect(developerPrompt).toContain('supersede accepted ADRs instead of rewriting them');
+  });
+
+  it('requires QA to verify the docs update in the same diff', () => {
+    expect(qaPrompt).toContain(
+      'verify the matching `docs/` file was updated in the same diff',
+    );
   });
 });

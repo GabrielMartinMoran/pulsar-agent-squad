@@ -50,10 +50,13 @@ describe('pyramid testing policy contract', () => {
   });
 
   it('defines pyramid shape as a qualitative invariant without fixed ratios', () => {
-    const prd = readFileSync('prd.md', 'utf-8');
+    // The Lead prompt is prose; normalize whitespace so the pinned phrases
+    // match across line breaks (same convention as build.test.ts).
+    const prompt = readFileSync('src/agents/Pulsar Agent Squad.md', 'utf-8')
+      .replace(/\s+/g, ' ');
 
-    expect(prd).toContain('clearly pyramidal');
-    expect(prd).toContain('fixed numerical ratio');
-    expect(prd).toContain('cheapest sufficient level');
+    expect(prompt).toContain('clearly pyramidal');
+    expect(prompt).toContain('fixed numerical ratio');
+    expect(prompt).toContain('cheapest sufficient level');
   });
 });

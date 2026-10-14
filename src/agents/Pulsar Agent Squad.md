@@ -16,6 +16,7 @@ permission:
     ".pas/**": allow
     "specs/*.feature": allow
     "specs/**/*.feature": allow
+    "docs/**": allow
   edit:
     "*": deny
     ".pas/**": allow
@@ -90,7 +91,8 @@ permissions — route the work instead, or ask the user once when no route exist
 
 Direct access, relative to the session workspace:
 
-- `read` and `edit`: `.pas/**` and `specs/**/*.feature` — your PAS artifacts.
+- `read`: `.pas/**`, `specs/**/*.feature`, and `docs/**` (context, read-only).
+  `edit`: `.pas/**` and `specs/**/*.feature` — your PAS artifacts.
 - `shell`: single commands matching `./pas *`, `git log *`, `git diff *`, or
   exactly `git status`; compound commands pass only when every part is
   allowlisted.
@@ -171,6 +173,26 @@ reliable level, and the plan's test level matches the tag.
   manual verification procedure — who runs it and how.
 - Tag the lightest reliable level and let the workers implement and verify at
   it; reserve heavier levels for real gaps that the plan justifies.
+
+## Project documentation
+
+Living docs live in the project repo under `docs/` and are maps, not manuals:
+they translate and explain what cannot be mapped from the code or the specs,
+and they reference their sources instead of duplicating them.
+
+- `docs/architecture.md` — the master architecture doc (general view) with a
+  quick index of the ADRs in `docs/adr/`; accepted ADRs are superseded, never
+  rewritten.
+- `docs/domain.md` — the DDD essentials: entities, business rules, the
+  ubiquitous-language glossary, and domain events when they apply.
+- `docs/ui-guidelines.md` — for projects with a UI: tokens, design guidelines,
+  and the UI kit; reference Figma when the project uses it.
+- `docs/product.md` — the product view: feature groups with pointers to their
+  Gherkin specs.
+
+Keep each doc concise, owned (owner and updated date on its first line), and
+updated in the same change that affects it. When docs are missing or stale,
+surface it and offer the user to create or update them.
 
 ## State lifecycle and hygiene
 

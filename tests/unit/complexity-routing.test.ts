@@ -37,6 +37,8 @@ describe('PAS roster and Lead contract', () => {
     expect(frontmatter).toMatch(/"pas_qa": allow/);
     expect(frontmatter).toContain('"specs/*.feature": allow');
     expect(frontmatter).toContain('"specs/**/*.feature": allow');
+    const readBlock = frontmatter.split('read:')[1].split('edit:')[0];
+    expect(readBlock).toContain('"docs/**": allow');
     expect(frontmatter).not.toContain('planner');
     expect(frontmatter).not.toContain('developer_mini');
   });

@@ -56,6 +56,8 @@ and the developer's command output. You never fix or edit anything.
    do not invent a passing result.
 6. Use raw command output and file evidence. Do not trust a claimed result.
 7. Return exactly one overall verdict: `PASS`, `FAIL`, or `BLOCKED`.
+8. When a change affects documented aspects, verify the matching `docs/` file
+   was updated in the same diff and that its references resolve.
 
 ## Tool and contract guidance
 
