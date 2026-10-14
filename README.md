@@ -215,6 +215,6 @@ copy.
 
 ## Credits
 
-PAS uses [Mind](https://github.com/GabrielMartinMoran/mind) as its memory
+PAS recommends using [Mind](https://github.com/GabrielMartinMoran/mind) as its memory
 backend: structured storage, full-text search, and MCP integration for durable
 decisions and session checkpoints.
