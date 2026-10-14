@@ -50,7 +50,7 @@ export interface PromptSignalSession {
 export interface SetupWizardDeps {
   prompts: SetupPrompts;
   discoverModels: () => Promise<Model[]>;
-  populateVariantsFromVerbose: () => Promise<void>;
+  populateVariantsFromModelList: () => Promise<void>;
   discoverVariants: (modelId: string) => string[];
   setAgentModel: (
     config: OpenCodeConfig,
@@ -227,7 +227,7 @@ export async function runSetupWizard(
         deps.output('No models discovered. Is opencode installed and working?');
         continue outerLoop;
       }
-      await deps.populateVariantsFromVerbose();
+      await deps.populateVariantsFromModelList();
 
       searchLoop: while (true) {
         // STEP 4: search_model. Escape → back to choose_action.

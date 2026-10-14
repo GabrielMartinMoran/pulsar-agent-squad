@@ -87,7 +87,7 @@ mock.module('../../src/cli/lib/config-safety', () => ({
 
 mock.module('../../src/cli/lib/model-discovery', () => ({
   discoverModels: async () => [{ id: 'test/model', provider: 'test', name: 'test-model' }],
-  populateVariantsFromVerbose: async () => {},
+  populateVariantsFromModelList: async () => {},
   discoverVariants: () => [],
 }));
 

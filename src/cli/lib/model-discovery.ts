@@ -1,8 +1,12 @@
 /**
- * Model discovery — execute `opencode models` and parse the output.
+ * Model discovery — query the OpenCode v2 model registry.
  *
- * Output is one model per line in format: provider/model-id
- * Example: opencode/deepseek-v4-pro → { id: "opencode/deepseek-v4-pro", provider: "opencode", name: "deepseek-v4-pro" }
+ * Models are listed by `opencode models` (one model per line in format
+ * `provider/model-id`). Reasoning variants are discovered separately from the
+ * v2 registry endpoint `model.list`, invoked as
+ * `opencode api --standalone model.list`, which returns
+ * `{ location, data: Model.Info[] }` where each item carries
+ * `providerID`, `modelID`, and a `variants[]` array of `{ id, ... }` entries.
  */
 
 export type Model = {
@@ -11,107 +15,19 @@ export type Model = {
   name: string;
 };
 
-type VerboseModel = {
+type ModelListResponse = {
+  data?: unknown;
+};
+
+type ModelListEntry = {
+  providerID?: unknown;
+  modelID?: unknown;
   variants?: unknown;
 };
 
-type ParserState = 'IDLE' | 'IN_JSON';
-
-const MODEL_ID_PATTERN = /^[^\s{}"]+\/[^\s{}"]+$/;
-
-function variantNames(value: unknown): string[] | null {
-  if (Array.isArray(value)) {
-    return value.filter((variant): variant is string => typeof variant === 'string');
-  }
-  if (value !== null && typeof value === 'object') {
-    return Object.keys(value);
-  }
-  return null;
-}
-
-function braceDelta(line: string): number {
-  let delta = 0;
-  let isInString = false;
-  let isEscaped = false;
-
-  for (const character of line) {
-    if (isEscaped) {
-      isEscaped = false;
-      continue;
-    }
-    if (character === '\\' && isInString) {
-      isEscaped = true;
-      continue;
-    }
-    if (character === '"') {
-      isInString = !isInString;
-      continue;
-    }
-    if (!isInString && character === '{') delta += 1;
-    if (!isInString && character === '}') delta -= 1;
-  }
-
-  return delta;
-}
-
-function addParsedVariants(
-  variantsByModel: Record<string, string[]>,
-  modelId: string,
-  json: string,
-): void {
-  try {
-    const model = JSON.parse(json) as VerboseModel;
-    const variants = variantNames(model.variants);
-    if (variants !== null) variantsByModel[modelId] = variants;
-  } catch {
-    // A malformed model block is ignored. Later balanced blocks remain parseable.
-  }
-}
-
-/** Parse model-id + pretty-printed JSON blocks from `opencode models --verbose`. */
-export function parseVerboseModelsOutput(output: string): Record<string, string[]> {
-  const variantsByModel: Record<string, string[]> = {};
-  let state: ParserState = 'IDLE';
-  let pendingModelId: string | null = null;
-  let activeModelId = '';
-  let jsonLines: string[] = [];
-  let braceDepth = 0;
-
-  for (const rawLine of output.split('\n')) {
-    const line = rawLine.trim();
-
-    if (state === 'IDLE') {
-      if (!line) continue;
-      if (MODEL_ID_PATTERN.test(line)) {
-        pendingModelId = line;
-        continue;
-      }
-      if (!pendingModelId || !line.startsWith('{')) {
-        pendingModelId = null;
-        continue;
-      }
-
-      state = 'IN_JSON';
-      activeModelId = pendingModelId;
-      pendingModelId = null;
-      jsonLines = [rawLine];
-      braceDepth = braceDelta(rawLine);
-    } else {
-      jsonLines.push(rawLine);
-      braceDepth += braceDelta(rawLine);
-    }
-
-    if (state === 'IN_JSON' && braceDepth <= 0) {
-      addParsedVariants(variantsByModel, activeModelId, jsonLines.join('\n'));
-      state = 'IDLE';
-      activeModelId = '';
-      jsonLines = [];
-      braceDepth = 0;
-    }
-  }
-
-  return variantsByModel;
-}
+type VariantEntry = {
+  id?: unknown;
+};
 
 /**
  * Parse a single model line into a Model object.
@@ -136,7 +52,7 @@ export function parseModelLine(line: string): Model | null {
   };
 }
 
-/** Discover variants populated from the current verbose OpenCode model registry. */
+/** Discover variants populated from the current OpenCode v2 model registry. */
 export function discoverVariants(modelId: string): string[] {
   return [...(cachedVariants?.[modelId] ?? [])];
 }
@@ -153,19 +69,56 @@ export function discoverVariants(modelId: string): string[] {
 let cachedModels: Model[] | null = null;
 let cachedVariants: Record<string, string[]> | null = null;
 
-/** Populate the in-memory variant registry from `opencode models --verbose`. */
-export async function populateVariantsFromVerbose(): Promise<void> {
-  if (cachedVariants !== null) return;
+/**
+ * Whether a v2 registry variant fetch has already been attempted this run.
+ *
+ * The registry is fetched from a private ephemeral server
+ * (`opencode api --standalone model.list`), so the wizard attempts it at most
+ * once per process. The flag is set on every outcome (success or failure): a
+ * failed fetch degrades to skipping the variant step for the rest of the run
+ * rather than re-spawning on every model-selection pass.
+ */
+let variantsAttempted = false;
+
+/** Populate the in-memory variant registry from the v2 `model.list` endpoint. */
+export async function populateVariantsFromModelList(): Promise<void> {
+  if (variantsAttempted) return;
+  variantsAttempted = true;
 
   try {
-    const proc = Bun.spawnSync(['opencode', 'models', '--verbose'], {
+    const proc = Bun.spawnSync(['opencode', 'api', '--standalone', 'model.list'], {
       stdout: 'pipe',
       stderr: 'pipe',
     });
     if (proc.exitCode !== 0) return;
 
-    const parsed = parseVerboseModelsOutput(proc.stdout.toString());
-    if (Object.keys(parsed).length > 0) cachedVariants = parsed;
+    const parsed = JSON.parse(proc.stdout.toString()) as ModelListResponse;
+    if (!Array.isArray(parsed.data)) return;
+
+    const variantsByModel: Record<string, string[]> = {};
+    for (const item of parsed.data) {
+      if (item === null || typeof item !== 'object') continue;
+      const entry = item as ModelListEntry;
+
+      const providerID = entry.providerID;
+      const modelID = entry.modelID;
+      if (typeof providerID !== 'string' || providerID === '') continue;
+      if (typeof modelID !== 'string' || modelID === '') continue;
+      if (!Array.isArray(entry.variants)) continue;
+
+      const ids: string[] = [];
+      for (const variant of entry.variants) {
+        if (variant === null || typeof variant !== 'object') continue;
+        const id = (variant as VariantEntry).id;
+        if (typeof id === 'string' && id !== '') ids.push(id);
+      }
+
+      // Entry only when at least one variant id; duplicates: last wins.
+      if (ids.length > 0) variantsByModel[`${providerID}/${modelID}`] = ids;
+    }
+
+    // Only cache a non-empty registry (mirrors the models cache rule).
+    if (Object.keys(variantsByModel).length > 0) cachedVariants = variantsByModel;
   } catch {
     // Variant discovery is optional. The wizard safely skips this step on failure.
   }
@@ -181,6 +134,7 @@ export async function populateVariantsFromVerbose(): Promise<void> {
 export function resetModelsCache(): void {
   cachedModels = null;
   cachedVariants = null;
+  variantsAttempted = false;
 }
 
 /**

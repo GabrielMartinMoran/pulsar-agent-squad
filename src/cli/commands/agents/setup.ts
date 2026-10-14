@@ -27,7 +27,7 @@ import {
 import {
   discoverModels,
   discoverVariants,
-  populateVariantsFromVerbose,
+  populateVariantsFromModelList,
   type Model,
 } from '../../lib/model-discovery';
 import {
@@ -236,7 +236,7 @@ export default defineCommand({
             ),
         },
         discoverModels,
-        populateVariantsFromVerbose,
+        populateVariantsFromModelList,
         discoverVariants,
         setAgentModel: (c, agent, model, variant) => setAgentModel(c, agent, model, variant),
         removeAgentOverride,
