@@ -1,14 +1,20 @@
-# ✴︎ Pulsar Agent Squad (PAS)
+# ✦ Pulsar Agent Squad (PAS)
 
-A cost-efficient, contract-driven multi-agent harness: one strong control plane,
-light workers, zero unauthorized changes.
+A lightweight harness for everyday software development.
 
-> **One strong Lead. Three light workers. Every change approved, contracted,
-> and verified.**
+From new features to ongoing maintenance, PAS coordinates agents to keep work
+moving—fast, bounded, and verified.
 
-Describe a feature. PAS researches it, plans it, and stops at your approval
-gate. Approve, and light workers implement and verify the change under closed
-contracts — the strong model stays on the control plane.
+## From Nova to Pulsar
+
+[Nova Agent Squad](https://github.com/GabrielMartinMoran/nova-agent-squad)
+established a multi-platform foundation for explicitly authorized,
+contract-driven agent work. Pulsar Agent Squad carries those principles into a
+leaner, more atomic workflow: less process overhead, while keeping work
+bounded, approved, and verified.
+
+PAS also adds durable project context—living documentation, decision records,
+and resumable memory—so agents can support ongoing development and long term maintenance.
 
 ## Why PAS
 
@@ -101,15 +107,36 @@ flowchart TD
     L -->|result| U
 ```
 
-| Agent | Model | Role | Source |
-|---|---|---|---|
-| PAS Lead | strong | Control plane: plans, approves, adjudicates, persists | [`src/agents/Pulsar Agent Squad.md`](src/agents/Pulsar%20Agent%20Squad.md) |
-| `pas_researcher` | light | Read-only evidence worker | [`src/agents/pas_researcher.md`](src/agents/pas_researcher.md) |
-| `pas_developer` | light | Bounded TDD implementer, one atomic task | [`src/agents/pas_developer.md`](src/agents/pas_developer.md) |
-| `pas_qa` | light | Read-only verifier, one verdict | [`src/agents/pas_qa.md`](src/agents/pas_qa.md) |
+| Agent            | Model  | Role                                                  | Source                                                                     |
+| ---------------- | ------ | ----------------------------------------------------- | -------------------------------------------------------------------------- |
+| PAS Lead         | strong | Control plane: plans, approves, adjudicates, persists | [`src/agents/Pulsar Agent Squad.md`](src/agents/Pulsar%20Agent%20Squad.md) |
+| `pas_researcher` | light  | Read-only evidence worker                             | [`src/agents/pas_researcher.md`](src/agents/pas_researcher.md)             |
+| `pas_developer`  | light  | Bounded TDD implementer, one atomic task              | [`src/agents/pas_developer.md`](src/agents/pas_developer.md)               |
+| `pas_qa`         | light  | Read-only verifier, one verdict                       | [`src/agents/pas_qa.md`](src/agents/pas_qa.md)                             |
 
 Permissions are per role and enforced by the runtime, not by prompt text; the
 frontmatter of each prompt is the exact profile.
+
+### Model profiles
+
+PAS is designed to operate with lightweight models in its worker roles. Its
+robustness comes from the harness—explicit authorization, bounded contracts,
+atomic tasks, durable artifacts, and mandatory verification—not from requiring
+a strong model at every step.
+
+The following are example routing profiles as of **October 2026**. They
+describe reasoning effort within each model family, not universal capability
+equivalence across providers:
+
+| Profile | GPT-6 Luna                | DeepSeek V4.1 Flash | Typical PAS use                                                     |
+| ------- | ------------------------- | ------------------- | ------------------------------------------------------------------- |
+| Light   | `low`                     | `low`               | Default for research, implementation, and QA workers                |
+| Medium  | `medium`                  | `high`              | Optional escalation for broad, difficult, or high-risk worker tasks |
+| Strong  | `high`, `xhigh`, or `max` | `max`               | PAS Lead: planning, adjudication, and control-plane decisions       |
+
+DeepSeek V4.1 Flash does not expose a `medium` reasoning variant in the current
+catalog, so `high` is the suggested medium profile. Revisit these examples when
+the provider catalog or available reasoning variants change.
 
 ## What makes it different
 
