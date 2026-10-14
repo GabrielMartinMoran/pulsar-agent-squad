@@ -1,25 +1,62 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'fs';
 
-describe('pas_developer_shared.eta template', () => {
-  it('renders the bounded TDD constraints and output contract', async () => {
-    const template = readFileSync('src/cli/templates/pas_developer_shared.eta', 'utf-8');
-    const { Eta } = await import('eta');
-    const eta = new Eta({ autoTrim: false });
-    const constraints = eta.renderString(template, { agent: 'developer', section: 'constraints' });
-    const output = eta.renderString(template, { agent: 'developer', section: 'output_format' });
-    expect(constraints).toContain('approved atomic task');
-    expect(constraints).toContain('Red, Green, Refactor');
-    expect(output).toContain('<implementation_report>');
-    expect(output).toContain('<task_status>PASS | BLOCKED</task_status>');
-    expect(output).toContain('<scenarios_implemented>');
-    expect(output).toContain('<skill_application>');
-    expect(output).toContain('<test_coverage_explanation>');
-    expect(output).toContain('<memory_writes>');
+describe('pas_developer prompt contract', () => {
+  it('is self-contained and has no shared-template markers', () => {
+    const prompt = readFileSync('src/agents/pas_developer.md', 'utf-8');
+    expect(prompt).toContain('## Hard constraints');
+    expect(prompt).toContain('## Tool guidance');
+    expect(prompt).toContain('<implementation_report>');
+    expect(prompt).toContain('<task_status>PASS | BLOCKED</task_status>');
+    expect(prompt).toContain('<skill_application>');
+    expect(prompt).toContain('<test_coverage_explanation>');
+    expect(prompt).toContain('<memory_writes>');
+    expect(prompt).not.toContain('INJECT:developer_shared');
+    expect(prompt).not.toContain('developer_mini');
+  });
+});
+
+describe('pyramid testing policy contract', () => {
+  it('requires the developer to choose the cheapest sufficient test level', () => {
+    const prompt = readFileSync('src/agents/pas_developer.md', 'utf-8');
+
+    expect(prompt).toContain('cheapest sufficient level');
+    expect(prompt).toContain('unit');
+    expect(prompt).toContain('integration');
+    expect(prompt).toContain('E2E');
+    expect(prompt).toContain('Do not turn every Gherkin scenario into an E2E test');
+    expect(prompt).toContain('<test_strategy_review>');
   });
 
-  it('does not include mini-developer branching', async () => {
-    const template = readFileSync('src/cli/templates/pas_developer_shared.eta', 'utf-8');
-    expect(template).not.toContain('developer_mini');
+  it('requires QA to review cost, duplication, and portfolio shape', () => {
+    const prompt = readFileSync('src/agents/pas_qa.md', 'utf-8');
+
+    expect(prompt).toContain('cheapest sufficient level');
+    expect(prompt).toContain('lower-level alternative');
+    expect(prompt).toContain('duplicat');
+    expect(prompt).toContain('HEALTHY_PYRAMID');
+    expect(prompt).toContain('TOP_HEAVY');
+    expect(prompt).toContain('INVERTED');
+    expect(prompt).toContain('test_strategy');
+    expect(prompt).toContain('<test_strategy_review>');
+  });
+
+  it('requires the Lead plan to assign a test level and rationale', () => {
+    const prompt = readFileSync('src/agents/Pulsar Agent Squad.md', 'utf-8');
+
+    expect(prompt).toContain('test level');
+    expect(prompt).toContain('cheapest sufficient');
+    expect(prompt).toContain('E2E justification');
+  });
+
+  it('defines pyramid shape as a qualitative invariant without fixed ratios', () => {
+    // The Lead prompt is prose; normalize whitespace so the pinned phrases
+    // match across line breaks (same convention as build.test.ts).
+    const prompt = readFileSync('src/agents/Pulsar Agent Squad.md', 'utf-8')
+      .replace(/\s+/g, ' ');
+
+    expect(prompt).toContain('clearly pyramidal');
+    expect(prompt).toContain('fixed numerical ratio');
+    expect(prompt).toContain('cheapest sufficient level');
   });
 });

@@ -1,13 +1,9 @@
 import { defineCommand } from 'citty';
 import { parseManifest } from '../lib/manifest';
-import { Eta } from 'eta';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'fs';
 import { spawnSync } from 'bun';
 import { join } from 'path';
 import { injectSkillPoliciesFromConfig } from '../lib/skill-injection';
-
-// Minimal build logic imported from build.ts pattern
-const eta = new Eta({ autoTrim: false });
 
 function rmrf(path: string): void {
   if (!path) return;
@@ -16,18 +12,6 @@ function rmrf(path: string): void {
   } catch {
     // ignore
   }
-}
-
-function getDeveloperSharedContent(agent: 'developer', section: string): string {
-  const templatePath = `${import.meta.dir}/../templates/pas_developer_shared.eta`;
-  const template = readFileSync(templatePath, 'utf-8');
-  return eta.renderString(template, { agent, section });
-}
-
-function detectDeveloperAgent(sourceFile: string): 'developer' | null {
-  const fileName = sourceFile.split('/').pop();
-  if (fileName === 'pas_developer.md') return 'developer';
-  return null;
 }
 
 function agentNameFromDestFile(destFile: string): string | null {
@@ -41,14 +25,6 @@ function agentNameFromDestFile(destFile: string): string | null {
 
 function processAgentFile(sourceFile: string, destFile: string): void {
   let content = readFileSync(sourceFile, 'utf-8');
-  const devAgent = detectDeveloperAgent(sourceFile);
-
-  if (devAgent && content.includes('INJECT:developer_shared')) {
-    const markerPattern = /<!-- INJECT:developer_shared_(\w+) -->\n/g;
-    content = content.replace(markerPattern, (_match, section) => {
-      return getDeveloperSharedContent(devAgent, section);
-    });
-  }
 
   const agentName = agentNameFromDestFile(destFile);
   if (agentName) {
@@ -73,8 +49,9 @@ function buildDirEntry(entry: { source: string; distPath: string; target: string
 function buildFileEntry(entry: { source: string; distPath: string; target: string }): void {
   const destPath = `dist/${entry.distPath}`;
   mkdirSync(join(destPath, '..'), { recursive: true });
-  const content = readFileSync(entry.source, 'utf-8');
-  writeFileSync(destPath, content);
+  // Byte copy (same semantics as `pas build`): no text decoding, no
+  // skill injection — only canonical agent basenames get injected.
+  writeFileSync(destPath, readFileSync(entry.source));
 }
 
 export const testCommand = defineCommand({
@@ -83,19 +60,25 @@ export const testCommand = defineCommand({
     description: 'Build opencode and run contract tests',
   },
   async run() {
-    // Step 1: Build opencode
+    // Step 1: Build the opencode target. Every opencode row in the manifest
+    // is rebuilt (agents dir + pas-toolkit plugin), replicating the `pas build
+    // --target=opencode` semantics: clean dist/platforms/opencode once, then
+    // process each entry (dir -> first-level files with skill injection for
+    // canonical agent basenames; file -> byte copy).
     const entries = parseManifest();
-    const opencode = entries.find((e) => e.target === 'opencode');
-    if (!opencode) {
+    const opencodeEntries = entries.filter((e) => e.target === 'opencode');
+    if (opencodeEntries.length === 0) {
       console.error('ERROR: opencode target not found in manifest');
       process.exit(1);
     }
 
-    rmrf(`dist/${opencode.distPath}`);
-    if (opencode.kind === 'dir') {
-      buildDirEntry(opencode);
-    } else {
-      buildFileEntry(opencode);
+    rmrf('dist/platforms/opencode');
+    for (const entry of opencodeEntries) {
+      if (entry.kind === 'dir') {
+        buildDirEntry(entry);
+      } else {
+        buildFileEntry(entry);
+      }
     }
 
     // Step 2: Run all 16 contract test scripts

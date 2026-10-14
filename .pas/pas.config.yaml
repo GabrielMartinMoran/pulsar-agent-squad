@@ -11,7 +11,7 @@ state:
   max_active: 1
   numbering:
     start: 1
-    width: 4
+    width: 5
     source: archived
 
 memory:

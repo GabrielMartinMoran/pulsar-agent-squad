@@ -335,7 +335,7 @@ function emptyConfig(): OpenCodeConfig {
 }
 
 describe('runSetupWizard — agent loop', () => {
-  it('populates verbose variants after model discovery and before model search', async () => {
+  it('populates registry variants after model discovery and before model search', async () => {
     const events: string[] = [];
     let selectCalls = 0;
     let actionCalls = 0;
@@ -361,7 +361,7 @@ describe('runSetupWizard — agent loop', () => {
         events.push('models');
         return [ANTHROPIC_MODEL];
       },
-      populateVariantsFromVerbose: async () => {
+      populateVariantsFromModelList: async () => {
         events.push('variants');
       },
       discoverVariants: () => [],
@@ -404,7 +404,7 @@ describe('runSetupWizard — agent loop', () => {
     const deps: SetupWizardDeps = {
       prompts,
       discoverModels: async () => [luna],
-      populateVariantsFromVerbose: async () => {},
+      populateVariantsFromModelList: async () => {},
       discoverVariants: () => ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
       setAgentModel,
       removeAgentOverride,
@@ -448,7 +448,7 @@ describe('runSetupWizard — agent loop', () => {
     const deps: SetupWizardDeps = {
       prompts,
       discoverModels: async () => [ANTHROPIC_MODEL],
-      populateVariantsFromVerbose: async () => {},
+      populateVariantsFromModelList: async () => {},
       discoverVariants: () => [],
       setAgentModel: (config, agent, model) => {
         return setAgentModel(config, agent, model);
@@ -498,7 +498,7 @@ describe('runSetupWizard — agent loop', () => {
     const deps: SetupWizardDeps = {
       prompts,
       discoverModels: async () => [],
-      populateVariantsFromVerbose: async () => {},
+      populateVariantsFromModelList: async () => {},
       discoverVariants: () => [],
       setAgentModel: (config, agent, model) => setAgentModel(config, agent, model),
       removeAgentOverride,
@@ -538,7 +538,7 @@ describe('runSetupWizard — agent loop', () => {
     const deps: SetupWizardDeps = {
       prompts,
       discoverModels: async () => [],
-      populateVariantsFromVerbose: async () => {},
+      populateVariantsFromModelList: async () => {},
       discoverVariants: () => [],
       setAgentModel: (config, agent, model) => setAgentModel(config, agent, model),
       removeAgentOverride,
@@ -586,7 +586,7 @@ describe('runSetupWizard — agent loop', () => {
     const deps: SetupWizardDeps = {
       prompts,
       discoverModels: async () => [],
-      populateVariantsFromVerbose: async () => {},
+      populateVariantsFromModelList: async () => {},
       discoverVariants: () => [],
       setAgentModel: (config, agent, model) => setAgentModel(config, agent, model),
       removeAgentOverride,
@@ -637,7 +637,7 @@ describe('runSetupWizard — agent loop', () => {
     const deps: SetupWizardDeps = {
       prompts,
       discoverModels: async () => [ANTHROPIC_MODEL, OPENAI_MODEL],
-      populateVariantsFromVerbose: async () => {},
+      populateVariantsFromModelList: async () => {},
       discoverVariants: () => [],
       setAgentModel: (config, agent, model) => setAgentModel(config, agent, model),
       removeAgentOverride,
@@ -672,7 +672,7 @@ describe('runSetupWizard — agent loop', () => {
     const deps: SetupWizardDeps = {
       prompts,
       discoverModels: async () => [],
-      populateVariantsFromVerbose: async () => {},
+      populateVariantsFromModelList: async () => {},
       discoverVariants: () => [],
       setAgentModel: (config, agent, model) => setAgentModel(config, agent, model),
       removeAgentOverride,
@@ -713,7 +713,7 @@ describe('runSetupWizard — agent loop', () => {
         discoverCalls += 1;
         return [ANTHROPIC_MODEL, OPENAI_MODEL];
       },
-      populateVariantsFromVerbose: async () => {},
+      populateVariantsFromModelList: async () => {},
       discoverVariants: () => [],
       setAgentModel: (config, agent, model) => {
         lastChosenModel = model as Model;
@@ -766,7 +766,7 @@ describe('runSetupWizard — escape paths (approved drift-fix contract)', () => 
     const deps: SetupWizardDeps = {
       prompts,
       discoverModels: async () => [ANTHROPIC_MODEL],
-      populateVariantsFromVerbose: async () => {},
+      populateVariantsFromModelList: async () => {},
       discoverVariants: () => [],
       setAgentModel: (config, agent, model) => setAgentModel(config, agent, model),
       removeAgentOverride,
@@ -828,7 +828,7 @@ describe('runSetupWizard — escape paths (approved drift-fix contract)', () => 
     const deps: SetupWizardDeps = {
       prompts,
       discoverModels: async () => [ANTHROPIC_MODEL, OPENAI_MODEL],
-      populateVariantsFromVerbose: async () => {},
+      populateVariantsFromModelList: async () => {},
       discoverVariants: () => ['high', 'max'],
       setAgentModel: (config, agent, model) => setAgentModel(config, agent, model),
       removeAgentOverride,
@@ -893,7 +893,7 @@ describe('runSetupWizard — escape paths (approved drift-fix contract)', () => 
     const deps: SetupWizardDeps = {
       prompts,
       discoverModels: async () => [ANTHROPIC_MODEL],
-      populateVariantsFromVerbose: async () => {},
+      populateVariantsFromModelList: async () => {},
       discoverVariants: () => ['high', 'max'],
       setAgentModel: (config, agent, model, variant) =>
         setAgentModel(config, agent, model, variant),
@@ -955,7 +955,7 @@ describe('runSetupWizard — escape paths (approved drift-fix contract)', () => 
     const deps: SetupWizardDeps = {
       prompts,
       discoverModels: async () => [ANTHROPIC_MODEL, OPENAI_MODEL],
-      populateVariantsFromVerbose: async () => {},
+      populateVariantsFromModelList: async () => {},
       discoverVariants: () => [], // no variants → no variant step
       setAgentModel: (config, agent, model) => setAgentModel(config, agent, model),
       removeAgentOverride,

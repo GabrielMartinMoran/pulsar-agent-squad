@@ -154,6 +154,11 @@ export function findStarAllowLine(
 /**
  * Find an existing `  skill:` line inside the permission block.
  * Returns the 0-based line index, or -1 if not present.
+ *
+ * Matches both the nested-mapping form (`  skill:`) and the scalar form
+ * (`  skill: allow|deny|ask`). Only direct children of the `permission:`
+ * block are considered (exactly two spaces of indentation), so a nested
+ * `skill:` deeper inside another mapping is never picked up.
  */
 function findSkillLine(
   content: string,
@@ -161,7 +166,7 @@ function findSkillLine(
 ): number {
   const lines = content.split('\n');
   for (let i = block.firstChildLine; i <= block.lastChildLine; i++) {
-    if (lines[i].trim() === 'skill:') return i;
+    if (/^ {2}skill:\s*(\S.*)?$/.test(lines[i])) return i;
   }
   return -1;
 }

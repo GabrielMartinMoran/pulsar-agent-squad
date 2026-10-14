@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'bun:test';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { $ } from 'bun';
 
 const CLI_ENTRY = 'src/cli/index.ts';
@@ -21,6 +24,36 @@ describe('install command', () => {
     const stdout = result.stdout.toString();
     expect(stdout).toContain('DRY-RUN');
     expect(stdout).toContain('.config/opencode/agents');
+  });
+
+  it('should print the DRY-RUN copy line for the pas-toolkit plugin', async () => {
+    // Build first to ensure the plugin artifact exists
+    await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+
+    const result = await $`bun run ${CLI_ENTRY} install --target=opencode --dry-run`.quiet();
+    expect(result.exitCode).toBe(0);
+    const stdout = result.stdout.toString();
+    expect(stdout).toContain('pas-toolkit.ts');
+    expect(stdout).toContain('.config/opencode/plugins');
+  });
+
+  it('should install the plugin to a --destdir fixture byte-identical to source', async () => {
+    await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+
+    const destdir = mkdtempSync(join(tmpdir(), 'pas-install-fixture-'));
+    try {
+      const result = await $`bun run ${CLI_ENTRY} install --target=opencode --destdir=${destdir}`.quiet();
+      expect(result.exitCode).toBe(0);
+
+      const installed = join(destdir, '.config/opencode/plugins/pas-toolkit.ts');
+      expect(existsSync(installed)).toBe(true);
+
+      const plugin = readFileSync(installed);
+      const source = readFileSync('src/tools/pas-toolkit.ts');
+      expect(plugin.equals(source)).toBe(true);
+    } finally {
+      rmSync(destdir, { recursive: true, force: true });
+    }
   });
 
   it('should fail for unknown target', async () => {

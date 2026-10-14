@@ -5,7 +5,7 @@ import { join } from 'path';
 export const uninstallCommand = defineCommand({
   meta: {
     name: 'uninstall',
-    description: 'Remove PAS agent files from target directory',
+    description: 'Remove PAS agent files and the pas_toolkit plugin from their target directories',
   },
   args: {
     'dry-run': {
@@ -16,11 +16,16 @@ export const uninstallCommand = defineCommand({
       type: 'string',
       description: 'Target directory (default: ~/.config/opencode/agents)',
     },
+    'plugins-dest': {
+      type: 'string',
+      description: 'Plugins directory containing pas-toolkit.ts (default: ~/.config/opencode/plugins)',
+    },
   },
   async run({ args }) {
     const dryRun = (args['dry-run'] as boolean) || false;
     const home = process.env.HOME || process.env.USERPROFILE || '~';
     const dest = (args.dest as string) || join(home, '.config', 'opencode', 'agents');
+    const pluginsDest = (args['plugins-dest'] as string) || join(home, '.config', 'opencode', 'plugins');
 
     const agents = [
       'Pulsar Agent Squad.md',
@@ -43,9 +48,21 @@ export const uninstallCommand = defineCommand({
       }
     }
 
+    // Remove only the installed pas_toolkit plugin FILE. The `plugins/`
+    // container directory may hold unrelated plugins, so it is never removed.
+    const pluginPath = join(pluginsDest, 'pas-toolkit.ts');
+    if (dryRun) {
+      console.log(`DRY-RUN: rm '${pluginPath}'`);
+    } else if (existsSync(pluginPath)) {
+      rmSync(pluginPath);
+      console.log(`✓ Removed: ${pluginPath}`);
+    } else {
+      console.log(`Not found (skipped): ${pluginPath}`);
+    }
+
     if (!dryRun) {
       console.log('');
-      console.log('Note: This removes only the agent files.');
+      console.log('Note: This removes the PAS agent files and the pas_toolkit plugin.');
       console.log('To reset default_agent, edit ~/.config/opencode/opencode.json');
     }
   },

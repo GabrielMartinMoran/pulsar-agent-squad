@@ -11,6 +11,7 @@ permission:
   task: deny
   question: deny
   todowrite: deny
+  skill: allow
   read: allow
   glob: allow
   grep: allow

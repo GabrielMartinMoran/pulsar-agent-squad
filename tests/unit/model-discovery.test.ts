@@ -3,8 +3,7 @@ import {
   discoverModels,
   discoverVariants,
   parseModelLine,
-  parseVerboseModelsOutput,
-  populateVariantsFromVerbose,
+  populateVariantsFromModelList,
   resetModelsCache,
 } from '../../src/cli/lib/model-discovery';
 
@@ -297,209 +296,210 @@ describe('discoverModels — in-memory cache', () => {
   });
 });
 
-describe('verbose model variant discovery', () => {
-  const lunaOutput = [
-    'openai/gpt-5.6-luna',
-    '{',
-    '  "id": "gpt-5.6-luna",',
-    '  "metadata": {',
-    '    "nested": { "label": "openai/not-a-model-boundary" }',
-    '  },',
-    '  "variants": {',
-    '    "none": {},',
-    '    "low": {},',
-    '    "medium": {},',
-    '    "high": {},',
-    '    "xhigh": {},',
-    '    "max": {}',
-    '  }',
-    '}',
-  ].join('\n');
+describe('v2 model registry variant discovery', () => {
+  const LUNA_VARIANTS = ['none', 'low', 'medium', 'high', 'xhigh', 'max'];
+  const DEEPSEEK_VARIANTS = ['low', 'high', 'max'];
 
-  it('FEAT-001 — Luna model shows all six reasoning-effort variants', () => {
-    expect(parseVerboseModelsOutput(lunaOutput)).toEqual({
-      'openai/gpt-5.6-luna': ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
-    });
-  });
+  function registryJson(data: unknown[]): string {
+    return JSON.stringify({ location: 'https://opencode.local', data });
+  }
 
-  it('FEAT-001 — model with fewer variants does not show unavailable options', () => {
-    const output = [
-      'openai/gpt-5-mini',
-      '{',
-      '  "nested": {',
-      '    "provider/model-looking-value": { "enabled": true }',
-      '  },',
-      '  "variants": ["none", "low", "medium", "high"]',
-      '}',
-    ].join('\n');
+  const happyRegistry = registryJson([
+    {
+      providerID: 'openai',
+      modelID: 'gpt-5.6-luna',
+      variants: LUNA_VARIANTS.map((id) => ({ id })),
+    },
+    {
+      providerID: 'opencode-go',
+      modelID: 'deepseek-v4.1-flash',
+      variants: DEEPSEEK_VARIANTS.map((id) => ({ id })),
+    },
+    {
+      providerID: 'openrouter',
+      modelID: 'openai/gpt-5.6-luna',
+      variants: LUNA_VARIANTS.map((id) => ({ id })),
+    },
+  ]);
 
-    expect(parseVerboseModelsOutput(output)).toEqual({
-      'openai/gpt-5-mini': ['none', 'low', 'medium', 'high'],
-    });
-  });
-
-  it('skips a balanced malformed JSON block and resumes at the next model id', () => {
-    const output = [
-      'openai/broken',
-      '{ "variants": ["high",], "nested": {} }',
-      'openai/gpt-5-mini',
-      '{ "variants": ["none", "low", "medium", "high"] }',
-    ].join('\n');
-
-    expect(parseVerboseModelsOutput(output)).toEqual({
-      'openai/gpt-5-mini': ['none', 'low', 'medium', 'high'],
-    });
-  });
-
-  it('tolerates trivial one-line JSON and keeps only string variants', () => {
-    const output = [
-      'provider/model',
-      '{"variants":["low",7,"high",null]}',
-    ].join('\n');
-
-    expect(parseVerboseModelsOutput(output)).toEqual({
-      'provider/model': ['low', 'high'],
-    });
-  });
-
-  it('FEAT-001 — model with no variants skips the variant step', () => {
-    const output = ['opencode/deepseek-v4-pro', '{', '  "variants": []', '}'].join('\n');
-
-    expect(parseVerboseModelsOutput(output)).toEqual({
-      'opencode/deepseek-v4-pro': [],
-    });
-  });
-
-  it('populates Luna variants and the smaller gpt-5-mini subset without static fallback', async () => {
-    const output = [
-      lunaOutput,
-      'openai/gpt-5-mini',
-      '{ "variants": ["none", "low", "medium", "high"] }',
-      'openrouter/anthropic/claude-sonnet-4-5',
-      '{ "variants": [] }',
-    ].join('\n');
+  /** Install a fake `Bun.spawnSync` returning a fixed registry payload. */
+  function spawnOnce(output: string, exitCode = 0) {
+    const calls: string[][] = [];
     const originalSpawn = Bun.spawnSync;
-    Bun.spawnSync = (() => ({
-      exitCode: 0,
-      stdout: Buffer.from(output),
-      stderr: Buffer.from(''),
-    })) as typeof Bun.spawnSync;
+    Bun.spawnSync = ((cmd: string[]) => {
+      calls.push(cmd);
+      return {
+        exitCode,
+        stdout: Buffer.from(output),
+        stderr: Buffer.from(''),
+      };
+    }) as typeof Bun.spawnSync;
+    return {
+      calls,
+      restore: () => {
+        Bun.spawnSync = originalSpawn;
+      },
+    };
+  }
 
+  it('parses provider, model id and variant ids from the v2 model list', async () => {
+    const { restore } = spawnOnce(happyRegistry);
     try {
-      await populateVariantsFromVerbose();
+      await populateVariantsFromModelList();
 
-      expect(discoverVariants('openai/gpt-5.6-luna')).toEqual([
-        'none',
-        'low',
-        'medium',
-        'high',
-        'xhigh',
-        'max',
-      ]);
-      expect(discoverVariants('openai/gpt-5-mini')).toEqual([
-        'none',
-        'low',
-        'medium',
-        'high',
-      ]);
-      expect(discoverVariants('openrouter/anthropic/claude-sonnet-4-5')).toEqual([]);
+      expect(discoverVariants('openai/gpt-5.6-luna')).toEqual(LUNA_VARIANTS);
+      expect(discoverVariants('opencode-go/deepseek-v4.1-flash')).toEqual(DEEPSEEK_VARIANTS);
+      // Multi-segment modelID keys on the full `providerID/modelID` pair.
+      expect(discoverVariants('openrouter/openai/gpt-5.6-luna')).toEqual(LUNA_VARIANTS);
     } finally {
-      Bun.spawnSync = originalSpawn;
+      restore();
     }
   });
 
-  it('returns defensive copies so callers cannot mutate cached variants', async () => {
-    const originalSpawn = Bun.spawnSync;
-    Bun.spawnSync = (() => ({
-      exitCode: 0,
-      stdout: Buffer.from(lunaOutput),
-      stderr: Buffer.from(''),
-    })) as typeof Bun.spawnSync;
-
+  it("spawns exactly ['opencode','api','--standalone','model.list']", async () => {
+    const { calls, restore } = spawnOnce(happyRegistry);
     try {
-      await populateVariantsFromVerbose();
-      const first = discoverVariants('openai/gpt-5.6-luna');
-      first.push('invalid');
+      await populateVariantsFromModelList();
 
-      expect(discoverVariants('openai/gpt-5.6-luna')).not.toContain('invalid');
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual(['opencode', 'api', '--standalone', 'model.list']);
     } finally {
-      Bun.spawnSync = originalSpawn;
+      restore();
     }
   });
 
-  it('caches verbose discovery and resetModelsCache clears that cache', async () => {
+  it('models with an empty variants array expose no variant data', async () => {
+    const { restore } = spawnOnce(
+      registryJson([{ providerID: 'openai', modelID: 'gpt-5-mini', variants: [] }]),
+    );
+    try {
+      await populateVariantsFromModelList();
+
+      expect(discoverVariants('openai/gpt-5-mini')).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+
+  it('skips malformed registry items and keeps parsing the rest', async () => {
+    const { restore } = spawnOnce(
+      registryJson([
+        { modelID: 'no-provider', variants: [{ id: 'high' }] },
+        { providerID: 'openai', variants: [{ id: 'high' }] },
+        { providerID: 'openai', modelID: '', variants: [{ id: 'high' }] },
+        { providerID: 'openai', modelID: 'non-array-variants', variants: 'nope' },
+        {
+          providerID: 'openai',
+          modelID: 'weird-ids',
+          variants: [{ id: 'high' }, { id: '' }, { id: 7 }, null, 'x', { name: 'no-id' }],
+        },
+        {
+          providerID: 'openai',
+          modelID: 'gpt-5-mini',
+          variants: [{ id: 'none' }, { id: 'low' }],
+        },
+      ]),
+    );
+    try {
+      await populateVariantsFromModelList();
+
+      // The well-formed item still parses.
+      expect(discoverVariants('openai/gpt-5-mini')).toEqual(['none', 'low']);
+      // Non-string / empty variant ids are dropped; the rest is kept.
+      expect(discoverVariants('openai/weird-ids')).toEqual(['high']);
+      // Items missing ids or carrying a non-array `variants` are skipped.
+      expect(discoverVariants('openai/non-array-variants')).toEqual([]);
+      expect(discoverVariants('openai/no-provider')).toEqual([]);
+      expect(discoverVariants('no-provider')).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+
+  it('degrades silently and attempts only once when the request fails', async () => {
+    const scenarios = ['exit', 'throw', 'invalid-json', 'non-array'] as const;
+
+    for (const scenario of scenarios) {
+      resetModelsCache();
+      const calls: string[][] = [];
+      const originalSpawn = Bun.spawnSync;
+      Bun.spawnSync = ((cmd: string[]) => {
+        calls.push(cmd);
+        if (scenario === 'throw') throw new Error('opencode not found');
+        return {
+          exitCode: scenario === 'exit' ? 1 : 0,
+          stdout: Buffer.from(
+            scenario === 'invalid-json'
+              ? 'not json'
+              : scenario === 'non-array'
+                ? JSON.stringify({ data: {} })
+                : '',
+          ),
+          stderr: Buffer.from(''),
+        };
+      }) as typeof Bun.spawnSync;
+      try {
+        await populateVariantsFromModelList();
+        expect(discoverVariants('openai/gpt-5.6-luna')).toEqual([]);
+
+        // Deliberate change vs the old contract: the failed attempt is
+        // marked done, so a second call in the same run does NOT re-spawn.
+        await populateVariantsFromModelList();
+        expect(calls).toHaveLength(1);
+      } finally {
+        Bun.spawnSync = originalSpawn;
+      }
+    }
+  });
+
+  it('caches a successful registry once and resetModelsCache clears it plus the attempt flag', async () => {
     let calls = 0;
     const originalSpawn = Bun.spawnSync;
     Bun.spawnSync = (() => {
       calls += 1;
       return {
         exitCode: 0,
-        stdout: Buffer.from(lunaOutput),
+        stdout: Buffer.from(happyRegistry),
         stderr: Buffer.from(''),
       };
     }) as typeof Bun.spawnSync;
 
     try {
-      await populateVariantsFromVerbose();
-      await populateVariantsFromVerbose();
+      await populateVariantsFromModelList();
+      await populateVariantsFromModelList();
       expect(calls).toBe(1);
 
       resetModelsCache();
-      await populateVariantsFromVerbose();
+      await populateVariantsFromModelList();
       expect(calls).toBe(2);
+      expect(discoverVariants('openai/gpt-5.6-luna')).toEqual(LUNA_VARIANTS);
     } finally {
       Bun.spawnSync = originalSpawn;
     }
   });
 
-  it('FEAT-001 — opencode models --verbose fails or is not supported', async () => {
-    const originalSpawn = Bun.spawnSync;
-    Bun.spawnSync = (() => ({
-      exitCode: 1,
-      stdout: Buffer.from(''),
-      stderr: Buffer.from('unsupported flag'),
-    })) as typeof Bun.spawnSync;
-
+  it('returns defensive copies so callers cannot mutate cached variants', async () => {
+    const { restore } = spawnOnce(happyRegistry);
     try {
-      await populateVariantsFromVerbose();
+      await populateVariantsFromModelList();
+      const first = discoverVariants('openai/gpt-5.6-luna');
+      first.push('invalid');
+
+      expect(discoverVariants('openai/gpt-5.6-luna')).not.toContain('invalid');
+    } finally {
+      restore();
+    }
+  });
+
+  it('FEAT-001 — registry request fails or is unsupported → no variants', async () => {
+    const { restore } = spawnOnce('', 1);
+    try {
+      await populateVariantsFromModelList();
+
       expect(discoverVariants('openai/gpt-5.6-luna')).toEqual([]);
       expect(discoverVariants('openrouter/anthropic/claude-sonnet-4-5')).toEqual([]);
     } finally {
-      Bun.spawnSync = originalSpawn;
-    }
-  });
-
-  it('FEAT-001 — known-static-variant model is skipped without verbose data', () => {
-    expect(discoverVariants('openrouter/anthropic/claude-sonnet-4-5')).toEqual([]);
-  });
-
-  it('degrades safely when spawning verbose throws', async () => {
-    const originalSpawn = Bun.spawnSync;
-    Bun.spawnSync = (() => {
-      throw new Error('opencode not found');
-    }) as typeof Bun.spawnSync;
-
-    try {
-      await populateVariantsFromVerbose();
-      expect(discoverVariants('openai/gpt-5.6-luna')).toEqual([]);
-    } finally {
-      Bun.spawnSync = originalSpawn;
-    }
-  });
-
-  it('degrades safely when verbose output has no parseable variant blocks', async () => {
-    const originalSpawn = Bun.spawnSync;
-    Bun.spawnSync = (() => ({
-      exitCode: 0,
-      stdout: Buffer.from('openai/gpt-5.6-luna\nnot-json'),
-      stderr: Buffer.from(''),
-    })) as typeof Bun.spawnSync;
-
-    try {
-      await populateVariantsFromVerbose();
-      expect(discoverVariants('openai/gpt-5.6-luna')).toEqual([]);
-    } finally {
-      Bun.spawnSync = originalSpawn;
+      restore();
     }
   });
 });

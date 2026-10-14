@@ -1,10 +1,7 @@
 import { defineCommand } from 'citty';
 import { parseManifest, type ManifestEntry } from '../lib/manifest';
-import { Eta } from 'eta';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { injectSkillPoliciesFromConfig } from '../lib/skill-injection';
-
-const eta = new Eta({ autoTrim: false });
 
 function rmrf(path: string): void {
   if (!path) return;
@@ -13,18 +10,6 @@ function rmrf(path: string): void {
   } catch {
     // ignore - dir may not exist
   }
-}
-
-function getDeveloperSharedContent(agent: 'developer', section: string): string {
-  const templatePath = `${import.meta.dir}/../templates/pas_developer_shared.eta`;
-  const template = readFileSync(templatePath, 'utf-8');
-  return eta.renderString(template, { agent, section });
-}
-
-function detectDeveloperAgent(sourceFile: string): 'developer' | null {
-  const fileName = sourceFile.split('/').pop();
-  if (fileName === 'pas_developer.md') return 'developer';
-  return null;
 }
 
 /**
@@ -46,15 +31,6 @@ function agentNameFromDestFile(destFile: string): string | null {
 
 function processAgentFile(sourceFile: string, destFile: string): void {
   let content = readFileSync(sourceFile, 'utf-8');
-  const devAgent = detectDeveloperAgent(sourceFile);
-
-  // Check for developer shared INJECT markers
-  if (devAgent && content.includes('INJECT:developer_shared')) {
-    const markerPattern = /<!-- INJECT:developer_shared_(\w+) -->\n/g;
-    content = content.replace(markerPattern, (_match, section) => {
-      return getDeveloperSharedContent(devAgent, section);
-    });
-  }
 
   // Build-time injection of CLI-managed `permission.skill` rules from
   // the user's `opencode.json` (or `PAS_OPENCODE_CONFIG_PATH` override).

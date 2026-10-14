@@ -1,0 +1,64 @@
+> Owner: PAS maintainers · Updated: 2026-10-14
+
+# Product
+
+PAS lets a developer run a serious engineering workflow frequently without
+paying for a strong model in every role: one strong Lead owns the control plane
+and delegates bounded work to lightweight researchers, developers, and QA
+workers. This doc is the product map; the behavior contracts are the Gherkin
+specs it points to. Vision, goals, and users are native to this doc
+(migrated from the retired PRD, 2026-10-14).
+
+## Feature groups
+
+Each group names its behavior contracts:
+
+- **Lead orchestration** — planning-first workflow, parallel research batches,
+  strictly sequential implementation. Contracts:
+  `specs/features/product/lead-parallel-research.feature`.
+- **Runtime permissions** — fixed, documented permission profiles per role;
+  denials are policy and route work instead of blocking it. Contracts:
+  `specs/features/product/lead-runtime-permissions.feature`.
+- **State lifecycle** — numbered feature directories, single-writer state
+  operations through the installed toolkit, hygiene detection. Contracts:
+  `specs/features/product/state-hygiene.feature`.
+- **Parallelism** — worker-internal batching guards: concurrent independent
+  checks, sequential shared state. Contracts:
+  `specs/features/product/worker-internal-parallelism.feature`.
+- **Gherkin tags** — one class tag per scenario fixes its lightest reliable
+  test level. Contracts:
+  `specs/features/product/gherkin-tag-policy.feature`.
+- **Project documentation** — living docs as maps, updated with the change,
+  with an ADR trail. Contracts:
+  `specs/features/product/project-documentation.feature`.
+
+## Scope boundaries
+
+The MVP targets OpenCode first; multi-runtime support, NAS migration, and
+permanent daemons are out of scope. The scope boundaries are native to this doc
+(migrated from the retired PRD, 2026-10-14).
+
+## Who it serves
+
+Developers who want lower model cost per approved change, an auditable trail,
+review before source changes, and resumable features. Users, use cases, and
+success metrics are native to this doc
+(migrated from the retired PRD, 2026-10-14).
+
+## Success metrics
+
+The first evaluation compares PAS against an equivalent NAS workflow on a
+representative task corpus and measures:
+
+- Cost per approved change.
+- First-pass approval rate.
+- Test and QA failure rate.
+- Scope-violation rate.
+- Defects found after completion.
+- Worker escalation rate.
+- Automatic retry rate.
+- Artifact completeness.
+- Time to approved plan.
+
+A trial is valid only when the intended agent and model executed the task; a
+runtime fallback invalidates it.
