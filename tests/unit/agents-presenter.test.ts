@@ -232,7 +232,7 @@ describe('buildAgentSummary — full card view over the canonical PAS agents', (
     expect(out).toMatch(/Model:\s+anthropic\/claude-sonnet-4-6/);
     expect(out).toMatch(/Variant:\s+high/);
     expect(out).toMatch(/Model:\s+opencode\/deepseek-v4-pro/);
-    expect(out.match(/Variant:\s+default/g)?.length).toBe(3);
+    expect(out.match(/Variant:\s+default/g)?.length).toBe(4);
     expect(out).not.toContain('Reasoning effort:');
   });
 

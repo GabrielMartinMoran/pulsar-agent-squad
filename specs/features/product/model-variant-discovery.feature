@@ -14,7 +14,15 @@ Feature: Reasoning variant discovery for model selection
     Given the model list returns data items with provider, model id, and variant ids
     When the variant registry is populated
     Then each model's variant ids are available through discoverVariants
-    And entries are keyed by provider plus model id, including multi-segment model ids
+    And entries are keyed by provider plus the entry's public model id, including multi-segment model ids
+
+  @variant-discovery @registry @unit
+  Scenario: Variants resolve when the public id differs from the upstream model id
+    Given a registry entry has public id "gpt-6-luna-fast" and upstream model id "gpt-6-luna"
+    And the entry declares reasoning variants
+    When the variant registry is populated
+    Then discoverVariants returns those variants for "openai/gpt-6-luna-fast"
+    And an entry without a usable public id still resolves through "provider/upstream-model-id"
 
   @variant-discovery @registry @unit
   Scenario: Models without variants expose no variant data
