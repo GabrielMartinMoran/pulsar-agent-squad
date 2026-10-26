@@ -349,8 +349,81 @@ describe('v2 model registry variant discovery', () => {
 
       expect(discoverVariants('openai/gpt-5.6-luna')).toEqual(LUNA_VARIANTS);
       expect(discoverVariants('opencode-go/deepseek-v4.1-flash')).toEqual(DEEPSEEK_VARIANTS);
-      // Multi-segment modelID keys on the full `providerID/modelID` pair.
+      // Multi-segment model ids key on the full `providerID/id` pair.
       expect(discoverVariants('openrouter/openai/gpt-5.6-luna')).toEqual(LUNA_VARIANTS);
+    } finally {
+      restore();
+    }
+  });
+
+  it('keys variants on the public id when it differs from the upstream modelID', async () => {
+    // The OpenAI provider exposes fast/ultrafast entries whose public `id`
+    // differs from the `modelID` shared with the base model. `opencode models`
+    // prints `providerID/id`, so the registry must key on that public id or the
+    // wizard's `discoverVariants(model.id)` lookup misses.
+    const { restore } = spawnOnce(
+      registryJson([
+        {
+          providerID: 'openai',
+          id: 'gpt-6-luna',
+          modelID: 'gpt-6-luna',
+          variants: LUNA_VARIANTS.map((id) => ({ id })),
+        },
+        {
+          providerID: 'openai',
+          id: 'gpt-6-luna-fast',
+          modelID: 'gpt-6-luna',
+          variants: LUNA_VARIANTS.map((id) => ({ id })),
+        },
+        {
+          providerID: 'openai',
+          id: 'gpt-6-astra-ultrafast',
+          modelID: 'gpt-6-astra',
+          variants: LUNA_VARIANTS.map((id) => ({ id })),
+        },
+      ]),
+    );
+    try {
+      await populateVariantsFromModelList();
+
+      expect(discoverVariants('openai/gpt-6-luna-fast')).toEqual(LUNA_VARIANTS);
+      expect(discoverVariants('openai/gpt-6-astra-ultrafast')).toEqual(LUNA_VARIANTS);
+      expect(discoverVariants('openai/gpt-6-luna')).toEqual(LUNA_VARIANTS);
+    } finally {
+      restore();
+    }
+  });
+
+  it('falls back to modelID when the public id is absent or unusable', async () => {
+    // Older registry shapes may omit `id`. The lookup must keep working
+    // through `providerID/modelID`; empty or non-string ids also fall back.
+    const { restore } = spawnOnce(
+      registryJson([
+        {
+          providerID: 'openai',
+          modelID: 'gpt-legacy-no-id',
+          variants: [{ id: 'high' }],
+        },
+        {
+          providerID: 'openai',
+          id: '',
+          modelID: 'gpt-legacy-empty-id',
+          variants: [{ id: 'low' }],
+        },
+        {
+          providerID: 'openai',
+          id: 42,
+          modelID: 'gpt-legacy-numeric-id',
+          variants: [{ id: 'max' }],
+        },
+      ]),
+    );
+    try {
+      await populateVariantsFromModelList();
+
+      expect(discoverVariants('openai/gpt-legacy-no-id')).toEqual(['high']);
+      expect(discoverVariants('openai/gpt-legacy-empty-id')).toEqual(['low']);
+      expect(discoverVariants('openai/gpt-legacy-numeric-id')).toEqual(['max']);
     } finally {
       restore();
     }
