@@ -43,6 +43,33 @@ Feature: Optional autonomous Pulsar Agent Turbo execution
     And a final evidence-backed PASS FAIL or BLOCKED verdict is recorded
 
   @contract
+  Scenario: Direct execution parallelizes safe independent work
+    Given Turbo is investigating and validating without a delegated worker
+    When several reads searches or non-conflicting checks are independent
+    Then Turbo batches or concurrently executes those operations
+    And it serializes writes TDD transitions and checks sharing mutable resources
+    And it does not run verification against a changing tree
+
+  @contract
+  Scenario: Focused TDD precedes full project validation
+    Given Turbo is implementing an approved behavior change directly
+    When it writes the regression test before the production fix
+    Then it confirms the targeted test fails for the intended reason
+    And it reruns relevant tests after implementation and refactoring
+    And it does not repeat the whole suite after each small edit
+    And it runs the configured full project suite before QA handoff
+
+  @contract
+  Scenario: Solo QA retains the original PAS evidence and test strategy gates
+    Given Turbo finishes implementation without delegating to pas_developer
+    When it performs QA itself on the stable diff
+    Then it evaluates tag fidelity lowest sufficient test level and pyramid health
+    And it checks functions scenarios happy error and edge case coverage
+    And it verifies full test suite lint and read-only format evidence
+    And it returns PASS only with actual successful required checks
+    And it records missing required tools or evidence as BLOCKED
+
+  @contract
   Scenario: Risk triggers independent QA despite self implementation
     Given Turbo implemented an approved security-sensitive change itself
     When direct verification finishes
