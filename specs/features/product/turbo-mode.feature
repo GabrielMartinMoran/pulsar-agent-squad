@@ -53,8 +53,9 @@ Feature: Optional autonomous Pulsar Turbo execution
   @manual
   Scenario: Runtime behavior reflects selective rather than obligatory delegation
     Given the operator selects Pulsar Turbo in OpenCode
-    When the operator tries one trivial read-only question one bounded bug fix
-      and one risky cross-module feature in a disposable repository
+    When the operator tries a trivial read-only question
+    And the operator tries a bounded bug fix
+    And the operator tries a risky cross-module feature in a disposable repository
     Then the operator observes no workers for the trivial question
     And the operator observes a plan and approval gate before the bug fix
     And the operator observes verified QA and optional independent workers on the risky feature
