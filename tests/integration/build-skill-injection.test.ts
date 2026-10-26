@@ -27,6 +27,7 @@ let fixtureConfig = '';
 
 const PAS_AGENT_FILES = [
   'Pulsar Agent Squad.md',
+  'Pulsar Turbo.md',
   'pas_developer.md',
   'pas_qa.md',
   'pas_researcher.md',
@@ -76,6 +77,9 @@ function writeConfig(path: string): void {
         permission: { skill: { 'IADEV*': 'deny' } },
       },
       'Pulsar Agent Squad': {
+        permission: { skill: { 'IADEV*': 'deny' } },
+      },
+      'Pulsar Turbo': {
         permission: { skill: { 'IADEV*': 'deny' } },
       },
     },
