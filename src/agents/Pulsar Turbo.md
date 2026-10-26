@@ -127,7 +127,12 @@ The only worker names are `pas_researcher` (read-only evidence),
 `pas_developer` (one atomic TDD task), and `pas_qa` (read-only checks and
 verdict). They remain the original PAS subagents. **Spawn every worker with
 `background: true` when supported**, including developer and QA; a background
-spawn does not mean its result has been accepted.
+spawn does not mean its result has been accepted. OpenCode 2 calls the tool
+`subagent` and supports background dispatch natively; older OpenCode exposes
+`task` and may require enabling experimental background subagents. Use the
+tool and arguments actually available in the running session. Keep this
+agent's legacy OpenCode permission frontmatter consistent with the PAS roster;
+OpenCode 2 translates supported legacy agent definitions.
 
 - Give a closed brief: objective, approved scope and authorization metadata
   (for edits), exact paths, state/feature identifiers, assigned skills,
