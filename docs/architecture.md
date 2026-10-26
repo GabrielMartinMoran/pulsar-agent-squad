@@ -25,7 +25,7 @@ state/approval contracts.
 | Agent | Model | Role | Prompt |
 |---|---|---|---|
 | PAS Lead | strong | Original control plane: plan, approve, adjudicate, persist | `src/agents/Pulsar Agent Squad.md` |
-| Pulsar Turbo | strong | Optional primary: direct research/implementation/QA; selective background workers | `src/agents/Pulsar Turbo.md` |
+| Pulsar Agent Turbo | strong | Optional primary: direct research/implementation/QA; selective background workers | `src/agents/Pulsar Agent Turbo.md` |
 | `pas_researcher` | light | Read-only evidence worker | `src/agents/pas_researcher.md` |
 | `pas_developer` | light | Bounded TDD implementer, one atomic task | `src/agents/pas_developer.md` |
 | `pas_qa` | light | Read-only verifier, one PASS/FAIL/BLOCKED verdict | `src/agents/pas_qa.md` |

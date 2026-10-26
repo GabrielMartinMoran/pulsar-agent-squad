@@ -78,9 +78,9 @@ first agent you talk to:
 PAS does not set `default_agent` for you. Run `./pas --help` for the full
 command surface.
 
-## Pulsar Turbo (alternative OpenCode mode)
+## Pulsar Agent Turbo (alternative OpenCode mode)
 
-**Pulsar Turbo** is an optional, more autonomous primary agent. It uses the
+**Pulsar Agent Turbo** is an optional, more autonomous primary agent. It uses the
 same PAS approval gates, numbered feature state, tagged Gherkin, skills,
 checkpoints, TDD, and final verification, but it handles routine research,
 implementation, and QA directly. It delegates only when scope, risk,
@@ -97,11 +97,11 @@ To try Turbo without replacing the standard Lead:
 ```bash
 ./pas build --target=opencode
 ./pas install --target=opencode
-./pas agents setup              # optionally select a strong model for Pulsar Turbo
+./pas agents setup              # optionally select a strong model for Pulsar Agent Turbo
 ```
 
-Choose **Pulsar Turbo** in OpenCode's agent selector, or set
-`"default_agent": "Pulsar Turbo"` in your OpenCode config. Switch back to
+Choose **Pulsar Agent Turbo** in OpenCode's agent selector, or set
+`"default_agent": "Pulsar Agent Turbo"` in your OpenCode config. Switch back to
 `"Pulsar Agent Squad"` at any time. The existing PAS Lead and workers are
 unchanged; Turbo is an additional installed agent, not a global mode switch.
 
@@ -113,7 +113,7 @@ is unavailable; test on your installed version. The current PAS toolkit plugin
 has not been ported or verified against OpenCode 2's changed plugin API, so
 a V2 end-to-end run (including state lifecycle) is not yet certified.
 
-Sources: [Turbo agent](src/agents/Pulsar%20Turbo.md),
+Sources: [Turbo agent](src/agents/Pulsar%20Agent%20Turbo.md),
 [behavior contract](specs/features/product/turbo-mode.feature),
 [ADR](docs/adr/0005-optional-autonomous-turbo-lead.md).
 
@@ -149,7 +149,7 @@ flowchart TD
 | Agent            | Model  | Role                                                  | Source                                                                     |
 | ---------------- | ------ | ----------------------------------------------------- | -------------------------------------------------------------------------- |
 | PAS Lead         | strong | Original delegated control plane                     | [`src/agents/Pulsar Agent Squad.md`](src/agents/Pulsar%20Agent%20Squad.md) |
-| Pulsar Turbo      | strong | Optional self-driving primary with selective workers | [`src/agents/Pulsar Turbo.md`](src/agents/Pulsar%20Turbo.md) |
+| Pulsar Agent Turbo      | strong | Optional self-driving primary with selective workers | [`src/agents/Pulsar Agent Turbo.md`](src/agents/Pulsar%20Agent%20Turbo.md) |
 | `pas_researcher` | light  | Read-only evidence worker                             | [`src/agents/pas_researcher.md`](src/agents/pas_researcher.md)             |
 | `pas_developer`  | light  | Bounded TDD implementer, one atomic task              | [`src/agents/pas_developer.md`](src/agents/pas_developer.md)               |
 | `pas_qa`         | light  | Read-only verifier, one verdict                       | [`src/agents/pas_qa.md`](src/agents/pas_qa.md)                             |

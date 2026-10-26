@@ -13,8 +13,8 @@ context continuity on small and medium work.
 
 ## Decision
 
-Add **Pulsar Turbo** as a second OpenCode primary agent under
-`src/agents/Pulsar Turbo.md`. Reuse the existing `pas_researcher`,
+Add **Pulsar Agent Turbo** as a second OpenCode primary agent under
+`src/agents/Pulsar Agent Turbo.md`. Reuse the existing `pas_researcher`,
 `pas_developer`, and `pas_qa` subagents. Leave their prompts and the
 original `Pulsar Agent Squad.md` untouched.
 
@@ -51,7 +51,7 @@ uninstallation must recognize its exact filename.
 
 ## Sources
 
-- `src/agents/Pulsar Turbo.md`
+- `src/agents/Pulsar Agent Turbo.md`
 - `src/agents/Pulsar Agent Squad.md`
 - `specs/features/product/turbo-mode.feature`
 - `tests/unit/turbo-mode.test.ts`

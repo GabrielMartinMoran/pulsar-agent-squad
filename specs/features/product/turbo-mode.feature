@@ -1,11 +1,11 @@
-Feature: Optional autonomous Pulsar Turbo execution
+Feature: Optional autonomous Pulsar Agent Turbo execution
   PAS users can select a faster self-driving primary without altering the
   original Lead, its workers, or the existing artifact and approval contracts.
 
   @integration
   Scenario: Turbo is a separately selectable installed OpenCode primary
     Given the OpenCode target is built and installed
-    Then Pulsar Turbo is available alongside Pulsar Agent Squad
+    Then Pulsar Agent Turbo is available alongside Pulsar Agent Squad
     And the three original PAS workers remain available
     And both primary agents can receive independent model and skill settings
 
@@ -52,7 +52,7 @@ Feature: Optional autonomous Pulsar Turbo execution
 
   @manual
   Scenario: Runtime behavior reflects selective rather than obligatory delegation
-    Given the operator selects Pulsar Turbo in OpenCode
+    Given the operator selects Pulsar Agent Turbo in OpenCode
     When the operator tries a trivial read-only question
     And the operator tries a bounded bug fix
     And the operator tries a risky cross-module feature in a disposable repository

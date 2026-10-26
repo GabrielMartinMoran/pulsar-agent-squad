@@ -4,7 +4,7 @@
 
 PAS lets a developer run a serious engineering workflow frequently without
 paying for a strong model in every role: the original strong Lead delegates
-bounded work to light workers, while optional Pulsar Turbo does routine
+bounded work to light workers, while optional Pulsar Agent Turbo does routine
 research, implementation, and verification directly, invoking the same light
 workers selectively. This doc is the product map; the behavior contracts are the Gherkin
 specs it points to. Vision, goals, and users are native to this doc

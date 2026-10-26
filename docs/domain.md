@@ -56,7 +56,7 @@ One term per concept; the contracts use these names:
 | Term | Meaning |
 |---|---|
 | PAS Lead | Original strong primary; plans/adjudicates and delegates source changes; never edits source |
-| Pulsar Turbo | Optional strong primary; plans, edits and verifies directly, with selective background workers |
+| Pulsar Agent Turbo | Optional strong primary; plans, edits and verifies directly, with selective background workers |
 | Worker | A lightweight role: `pas_researcher`, `pas_developer`, or `pas_qa` |
 | Gate | A mandatory stop with an explicit exit condition |
 | Pin | A verbatim string asserted in tests so a built or installed prompt cannot drift silently |
