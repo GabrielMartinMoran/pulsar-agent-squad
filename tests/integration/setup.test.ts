@@ -248,7 +248,7 @@ describe('Setup wizard — PAS agents list', () => {
   it('should include both primary modes and the three PAS workers', () => {
     expect(PAS_AGENTS).toEqual([
       'Pulsar Agent Squad',
-      'Pulsar Turbo',
+      'Pulsar Agent Turbo',
       'pas_researcher',
       'pas_developer',
       'pas_qa',
@@ -265,7 +265,7 @@ describe('Setup wizard — agent model capability guidance', () => {
 
   it('should classify the PAS Lead as the heavy-model agent', () => {
     expect(getModelGuidance('Pulsar Agent Squad')).toBe('heavy');
-    expect(getModelGuidance('Pulsar Turbo')).toBe('heavy');
+    expect(getModelGuidance('Pulsar Agent Turbo')).toBe('heavy');
   });
 
   it('should return undefined for unknown agents', () => {

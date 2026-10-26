@@ -22,7 +22,7 @@ describe('build command', () => {
     const files = readdirSync(agentsDir);
     expect(files.sort()).toEqual([
       'Pulsar Agent Squad.md',
-      'Pulsar Turbo.md',
+      'Pulsar Agent Turbo.md',
       'pas_developer.md',
       'pas_qa.md',
       'pas_researcher.md',
