@@ -199,7 +199,7 @@ describe('buildAgentSummary — full card view over the canonical PAS agents', (
     const out = buildAgentSummary({}, { colorize: false });
     const names = [
       'Pulsar Agent Squad',
-      'Pulsar Turbo',
+      'Pulsar Agent Turbo',
       'pas_researcher',
       'pas_developer',
       'pas_qa',

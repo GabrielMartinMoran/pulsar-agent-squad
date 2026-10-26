@@ -8,7 +8,7 @@ describe('validate command', () => {
     const result = await $`bun run ${CLI_ENTRY} validate`.quiet();
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toString()).toContain('✓ src/agents/Pulsar Agent Squad.md');
-    expect(result.stdout.toString()).toContain('✓ src/agents/Pulsar Turbo.md');
+    expect(result.stdout.toString()).toContain('✓ src/agents/Pulsar Agent Turbo.md');
     expect(result.stdout.toString()).toContain('✓ src/agents/pas_researcher.md');
     expect(result.stdout.toString()).toContain('✓ src/agents/pas_developer.md');
     expect(result.stdout.toString()).toContain('✓ src/agents/pas_qa.md');

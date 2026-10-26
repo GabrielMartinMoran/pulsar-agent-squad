@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'fs';
 
-const turbo = readFileSync('src/agents/Pulsar Turbo.md', 'utf-8');
+const turbo = readFileSync('src/agents/Pulsar Agent Turbo.md', 'utf-8');
 const lead = readFileSync('src/agents/Pulsar Agent Squad.md', 'utf-8');
 const frontmatter = turbo.split('---')[1];
 
-describe('Pulsar Turbo alternative primary mode', () => {
+describe('Pulsar Agent Turbo alternative primary mode', () => {
   it('has source-edit and verification capabilities without modifying the PAS Lead', () => {
     expect(frontmatter).toContain('mode: primary');
     expect(frontmatter).toContain('edit: allow');
