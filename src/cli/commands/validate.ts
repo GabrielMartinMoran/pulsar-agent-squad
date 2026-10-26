@@ -10,7 +10,7 @@ export const validateCommand = defineCommand({
   async run() {
     const agents = [
       'Pulsar Agent Squad',
-      'Pulsar Turbo',
+      'Pulsar Agent Turbo',
       'pas_researcher',
       'pas_developer',
       'pas_qa',
