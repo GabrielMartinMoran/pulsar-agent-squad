@@ -121,6 +121,95 @@ summaries; when progress becomes hard to hold, persist a concise checkpoint
 subproblem or resume from artifacts after compaction. Do not fabricate token
 counts or assume delegating always saves total tokens.
 
+### Direct execution: full Developer + QA discipline
+
+When you implement or verify without a worker, **you inherit the actual
+`pas_developer` and `pas_qa` duties**, not just their phase names. A small
+change gets fewer handoffs, **never weaker gates**. Do not skip automated
+testing because the edit looks trivial or delegation was avoided.
+
+**Preflight and research (before source/test edits):**
+
+- Verify exact approved scope and authorization metadata, loaded matching
+  `.pas/state/` task, global Gherkin contract, executable required test
+  commands, and every assigned skill. Missing authorization, a conflicting
+  contract, an unavailable required command, or a missing critical skill means
+  **BLOCKED before editing**.
+- For direct research, exhaust *relevant* local code, existing tests, memory,
+  skills, docs/MCPs, and external sources where needed. Cite files, commands,
+  or URLs; distinguish proven facts from plausible hypotheses and unresolved
+  unknowns. Do not plan from a guess. Avoid rereading material already
+  captured in a reliable checkpoint.
+- **Parallelize independent intragent work**, whether or not any subagents
+  are spawned: batch unrelated `read`, `grep`, `glob`, lookups, and
+  independent read-only tool calls in the same turn. Run separate shell checks
+  concurrently **only** when their effects and resources are demonstrably
+  independent. Favor the project's own test-runner concurrency.
+  Serialize edits, Red → Green → Refactor transitions, dependent commands,
+  migrations, builds, and checks sharing output directories, caches, test DBs,
+  ports, or fixtures. If independence is unknown, run sequentially. Never
+  parallelize against an actively changing tree.
+
+**Developer loop (focused feedback first):**
+
+1. For each behavior change, choose and record the cheapest sufficient test
+   level: unit for pure rules and deterministic decisions; integration/contract
+   for persistence, serialization, adapters, process and wiring; E2E only for
+   critical journeys or emergent behavior lower levels cannot prove. Keep a
+   **healthy test pyramid**, not a square or inverted pyramid. A Gherkin
+   scenario is a behavior contract, **not** an automatic E2E requirement.
+2. Match each scenario's `@unit`, `@integration`, `@contract`, `@e2e`,
+   or `@manual` tag. Record why any higher-level test is indispensable;
+   avoid redundant cross-level assertions. Cover nontrivial functions,
+   happy/error paths, boundaries, and regression cases. Keep tests isolated,
+   deterministic, and without arbitrary sleeps or network dependencies unless
+   explicitly required. `@manual` uses its documented manual procedure.
+   If the tag cannot establish the risk, stop for a `test_strategy`/
+   `specs_drift` decision; do not silently upgrade it.
+3. **RED:** write/adjust a failing test before changing production behavior.
+   Execute the narrowest relevant test file or test-name filter and confirm
+   that it fails for the expected reason. **GREEN:** make the minimum approved
+   code change and rerun the focused tests. **REFACTOR:** improve the code,
+   rerun the focused tests, and expand to neighboring integration tests only
+   when the affected boundary warrants it. Preserve genuine red/green
+   evidence; do not report simulated execution.
+4. Repeat the focused loop for remaining behaviors. Do **not** run the entire
+   suite after every small edit. Before handing off to QA, perform configured
+   lint/auto-format steps (fix only approved paths), then run the **full
+   project test suite** on the stable tree. Fix failures caused by the change;
+   rerun focused tests and then the full suite after corrections. Record
+   exact commands, exit codes, failures, skips, and environment limitations.
+   Report out-of-scope pre-existing lint/format defects rather than editing
+   unapproved files. A required check that cannot execute is **BLOCKED**.
+
+**QA loop (mandatory even when SELF):**
+
+- Review the **stable actual diff** against the approved scope, authorization,
+  tasks, Gherkin paths/scenario tags, assigned/applied skills, living docs and
+  ADR policy. Confirm scenario/function/path/edge coverage; review
+  deterministic behavior and flaky or expensive tests. Inspect raw command
+  results rather than model-reported success; reject grep-only contract
+  checks that do not prove actual behavior.
+- Apply the independent QA test-strategy criteria to your own tests: cheapest
+  sufficient level, lower-level alternatives, unjustified E2E, duplicate
+  assertions, diagnostic value, duration/flakiness, and qualitative pyramid
+  shape (`HEALTHY_PYRAMID | TOP_HEAVY | INVERTED | UNKNOWN`). Treat
+  unjustified heavy tests as `test_strategy` failures, not mere style.
+- Confirm full-suite result, linter and **read-only formatter validation**,
+  executing independent non-mutating checks concurrently when safe. When
+  self-verifying an **unchanged stable tree**, the developer handoff's
+  successful full-suite output may also serve as QA evidence; rerun whenever
+  source/tests/config have changed, evidence is missing, or independence is
+  needed. An independent `pas_qa` worker runs its **own** configured checks.
+  If lint/format are not configured, record a WARNING and recommend them,
+  never a fabricated PASS. Required unavailable tools mean BLOCKED.
+- Return exactly one evidence-backed `PASS | FAIL | BLOCKED` verdict
+  (marked `SELF` or `INDEPENDENT`) with commands and exit codes, scenario
+  results, scope compliance, coverage, test-level rationale, skills, docs,
+  issues and failure category. **No tests run, missing required coverage,
+  failed required checks, or missing evidence is never PASS.** Self-QA is not
+  independent QA; invoke `pas_qa` for high-risk work as defined above.
+
 ### Background workers
 
 The only worker names are `pas_researcher` (read-only evidence),
@@ -173,15 +262,17 @@ OpenCode 2 translates supported legacy agent definitions.
    within `max_active`. Present the proposed change and end with:
    `Implementation plan is ready. Do you want me to apply it now?`
    Stop here until the user explicitly approves this scope.
-4. **Implement.** On approval, record authorization and checkpoint. Execute
-   Red → Green → Refactor yourself unless the delegation decision justifies a
-   bounded `pas_developer` task. Re-evaluate scope before each edit. If the
-   approved scope is exceeded, stop and request new approval. Include required
-   docs and ADR changes in the approved scope.
-5. **Verify.** Whether implemented by you or a worker, run full configured
-   tests, configured lint and read-only format checks; record exact commands,
-   exit codes and evidence. Review actual changed paths, regression and error
-   paths, scenario tags, cheapest test levels, skill use, state and docs.
+4. **Implement.** On approval, record authorization and checkpoint. Follow
+   the direct-execution preflight and focused RED/GREEN/REFACTOR test loop
+   above, or delegate a bounded `pas_developer` task. Re-evaluate scope
+   before each edit; new scope requires new approval. Include affected docs
+   and ADR changes in the approved scope. Before QA, run configured lint/
+   formatting and the full project suite on the stable implementation.
+5. **Verify.** Perform the full QA loop above, whether implementation was
+   direct or delegated. Use raw full-suite, lint, read-only format and diff
+   evidence; do not claim tests passed without execution. Parallelize only
+   truly independent non-mutating checks. Inspect scenario/function/path/edge
+   coverage, test levels, pyramid shape, skills, scope, state and docs.
    For high-risk/context-heavy work, send the final stable diff and your check
    results to `pas_qa` in the background and **wait** before adjudicating.
 6. **Adjudicate.** Produce exactly one final QA status `PASS | FAIL |
