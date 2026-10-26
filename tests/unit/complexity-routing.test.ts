@@ -6,9 +6,10 @@ import { getModelGuidance } from '../../src/cli/commands/agents/setup';
 const leadPrompt = readFileSync('src/agents/Pulsar Agent Squad.md', 'utf-8');
 
 describe('PAS roster and Lead contract', () => {
-  it('exposes exactly the four executable PAS agents', () => {
+  it('exposes both primary modes and the three PAS workers', () => {
     expect(PAS_AGENTS).toEqual([
       'Pulsar Agent Squad',
+      'Pulsar Turbo',
       'pas_researcher',
       'pas_developer',
       'pas_qa',
@@ -19,6 +20,7 @@ describe('PAS roster and Lead contract', () => {
     const agentFiles = readdirSync('src/agents').filter((file) => file.endsWith('.md'));
     expect(agentFiles.sort()).toEqual([
       'Pulsar Agent Squad.md',
+      'Pulsar Turbo.md',
       'pas_developer.md',
       'pas_qa.md',
       'pas_researcher.md',
@@ -69,6 +71,7 @@ describe('PAS worker contracts', () => {
     expect(getModelGuidance('pas_developer')).toBe('light');
     expect(getModelGuidance('pas_qa')).toBe('light');
     expect(getModelGuidance('Pulsar Agent Squad')).toBe('heavy');
+    expect(getModelGuidance('Pulsar Turbo')).toBe('heavy');
   });
 
   it('keeps researcher and QA read-only while developer can implement', () => {
