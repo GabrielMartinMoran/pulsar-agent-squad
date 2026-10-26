@@ -92,6 +92,14 @@ sequential with respect to the actual code changes. For higher-risk changes,
 Turbo requests independent QA even when it wrote the code itself. The final
 report distinguishes `SELF` from `INDEPENDENT` verification.
 
+**Same engineering rigor, less coordination overhead:** when working alone,
+Turbo batches independent reads and runs non-conflicting checks in parallel.
+It writes failing tests first, iterates with **focused tests** through
+Red → Green → Refactor, and runs the **full project suite** before QA—not
+after every small edit. Self-QA still reviews the real diff, scenario and
+edge-case coverage, test-level choices and pyramid health, lint, and read-only
+format validation. Missing or failing required checks cannot become a PASS.
+
 To try Turbo without replacing the standard Lead:
 
 ```bash
