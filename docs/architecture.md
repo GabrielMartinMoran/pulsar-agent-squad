@@ -41,6 +41,18 @@ prompt; the Lead contract is `## Runtime permissions and capabilities`. Sources:
 `specs/features/product/worker-internal-parallelism.feature`,
 `specs/features/product/turbo-mode.feature`.
 
+The two modes share **engineering quality**, not execution ownership.
+When Turbo acts as its own developer, it follows targeted Red → Green →
+Refactor tests, then the full project suite before QA. When Turbo acts as its
+own QA, it checks the stable diff, scenarios, test-level strategy/pyramid,
+skills, lint and read-only format evidence before one objective verdict.
+Independent reads and resource-isolated checks can run concurrently inside
+Turbo; writes, TDD transitions and shared-resource operations stay ordered.
+The source contracts are `src/agents/Pulsar Agent Turbo.md`,
+`src/agents/pas_developer.md`, `src/agents/pas_qa.md`,
+`specs/features/product/turbo-mode.feature` and
+`specs/features/product/worker-internal-parallelism.feature`.
+
 ## Distribution pipeline
 
 Prompts and the state toolkit ship as built artifacts:
