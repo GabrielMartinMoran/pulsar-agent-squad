@@ -1,11 +1,12 @@
-> Owner: PAS maintainers · Updated: 2026-10-14
+> Owner: PAS maintainers · Updated: 2026-10-26
 
 # Product
 
 PAS lets a developer run a serious engineering workflow frequently without
-paying for a strong model in every role: one strong Lead owns the control plane
-and delegates bounded work to lightweight researchers, developers, and QA
-workers. This doc is the product map; the behavior contracts are the Gherkin
+paying for a strong model in every role: the original strong Lead delegates
+bounded work to light workers, while optional Pulsar Agent Turbo does routine
+research, implementation, and verification directly, invoking the same light
+workers selectively. This doc is the product map; the behavior contracts are the Gherkin
 specs it points to. Vision, goals, and users are native to this doc
 (migrated from the retired PRD, 2026-10-14).
 
@@ -16,6 +17,10 @@ Each group names its behavior contracts:
 - **Lead orchestration** — planning-first workflow, parallel research batches,
   strictly sequential implementation. Contracts:
   `specs/features/product/lead-parallel-research.feature`.
+- **Turbo mode** — optional autonomous primary, context- and risk-aware
+  selective background delegation, mandatory verification and original PAS
+  approval/artifact guarantees. Contract:
+  `specs/features/product/turbo-mode.feature`.
 - **Runtime permissions** — fixed, documented permission profiles per role;
   denials are policy and route work instead of blocking it. Contracts:
   `specs/features/product/lead-runtime-permissions.feature`.

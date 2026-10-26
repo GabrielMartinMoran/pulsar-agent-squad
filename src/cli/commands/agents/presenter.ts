@@ -25,6 +25,7 @@ import type { OpenCodeConfig } from '../../lib/config-safety';
 /** Stable order of the canonical PAS agents. */
 export const PAS_AGENTS: readonly string[] = [
   'Pulsar Agent Squad',
+  'Pulsar Agent Turbo',
   'pas_researcher',
   'pas_developer',
   'pas_qa',
@@ -175,6 +176,7 @@ export type ModelGuidance = 'light' | 'heavy';
 
 const AGENT_MODEL_GUIDANCE: Record<string, ModelGuidance> = {
   'Pulsar Agent Squad': 'heavy',
+  'Pulsar Agent Turbo': 'heavy',
   pas_researcher: 'light',
   pas_developer: 'light',
   pas_qa: 'light',

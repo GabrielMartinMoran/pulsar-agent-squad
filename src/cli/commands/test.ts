@@ -20,6 +20,7 @@ function agentNameFromDestFile(destFile: string): string | null {
   if (base === 'pas_qa.md') return 'pas_qa';
   if (base === 'pas_researcher.md') return 'pas_researcher';
   if (base === 'Pulsar Agent Squad.md') return 'Pulsar Agent Squad';
+  if (base === 'Pulsar Agent Turbo.md') return 'Pulsar Agent Turbo';
   return null;
 }
 

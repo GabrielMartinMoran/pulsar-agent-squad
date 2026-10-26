@@ -29,6 +29,7 @@ export const uninstallCommand = defineCommand({
 
     const agents = [
       'Pulsar Agent Squad.md',
+      'Pulsar Agent Turbo.md',
       'pas_researcher.md',
       'pas_developer.md',
       'pas_qa.md',

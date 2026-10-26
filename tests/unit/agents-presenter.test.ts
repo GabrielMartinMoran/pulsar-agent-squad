@@ -199,6 +199,7 @@ describe('buildAgentSummary — full card view over the canonical PAS agents', (
     const out = buildAgentSummary({}, { colorize: false });
     const names = [
       'Pulsar Agent Squad',
+      'Pulsar Agent Turbo',
       'pas_researcher',
       'pas_developer',
       'pas_qa',
@@ -213,8 +214,8 @@ describe('buildAgentSummary — full card view over the canonical PAS agents', (
 
   it('shows Model and Variant defaults for every agent without a reasoning-effort line', () => {
     const out = buildAgentSummary({}, { colorize: false });
-    expect(out.match(/Model:\s+default/g)?.length).toBe(4);
-    expect(out.match(/Variant:\s+default/g)?.length).toBe(4);
+    expect(out.match(/Model:\s+default/g)?.length).toBe(5);
+    expect(out.match(/Variant:\s+default/g)?.length).toBe(5);
     expect(out).not.toContain('Reasoning effort:');
   });
 
