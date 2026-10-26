@@ -105,6 +105,14 @@ Choose **Pulsar Turbo** in OpenCode's agent selector, or set
 `"Pulsar Agent Squad"` at any time. The existing PAS Lead and workers are
 unchanged; Turbo is an additional installed agent, not a global mode switch.
 
+**Runtime compatibility:** OpenCode 2 calls its background worker tool
+`subagent` and translates supported V1 agent frontmatter. Older OpenCode
+calls it `task` and may require an experimental background-subagents flag.
+Turbo falls back to sequential foreground dispatch if background dispatch
+is unavailable; test on your installed version. The current PAS toolkit plugin
+has not been ported or verified against OpenCode 2's changed plugin API, so
+a V2 end-to-end run (including state lifecycle) is not yet certified.
+
 Sources: [Turbo agent](src/agents/Pulsar%20Turbo.md),
 [behavior contract](specs/features/product/turbo-mode.feature),
 [ADR](docs/adr/0005-optional-autonomous-turbo-lead.md).
