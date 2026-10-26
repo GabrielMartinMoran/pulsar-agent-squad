@@ -44,30 +44,30 @@ Feature: Optional autonomous Pulsar Agent Turbo execution
 
   @contract
   Scenario: Direct execution parallelizes safe independent work
-    Given Turbo is investigating and validating without a delegated worker
+    Given the Turbo agent contract is inspected
     When several reads searches or non-conflicting checks are independent
-    Then Turbo batches or concurrently executes those operations
-    And it serializes writes TDD transitions and checks sharing mutable resources
-    And it does not run verification against a changing tree
+    Then the prompt requires batching or concurrency for those operations
+    And it requires serial writes TDD transitions and shared-resource checks
+    And it forbids verification against a changing tree
 
   @contract
   Scenario: Focused TDD precedes full project validation
-    Given Turbo is implementing an approved behavior change directly
-    When it writes the regression test before the production fix
-    Then it confirms the targeted test fails for the intended reason
-    And it reruns relevant tests after implementation and refactoring
-    And it does not repeat the whole suite after each small edit
-    And it runs the configured full project suite before QA handoff
+    Given the Turbo agent contract is inspected for direct implementation
+    When a scoped behavior change is approved
+    Then the prompt requires a failing targeted regression test before its fix
+    And it requires focused retests after implementation and refactoring
+    And it avoids repeating the whole suite after each small edit
+    And it requires the full project suite before QA handoff
 
   @contract
   Scenario: Solo QA retains the original PAS evidence and test strategy gates
-    Given Turbo finishes implementation without delegating to pas_developer
-    When it performs QA itself on the stable diff
-    Then it evaluates tag fidelity lowest sufficient test level and pyramid health
-    And it checks functions scenarios happy error and edge case coverage
-    And it verifies full test suite lint and read-only format evidence
-    And it returns PASS only with actual successful required checks
-    And it records missing required tools or evidence as BLOCKED
+    Given the Turbo agent contract is inspected for solo QA
+    When no developer or QA worker is needed
+    Then the prompt requires tag fidelity test-level strategy and pyramid review
+    And it requires function scenario success error and edge case coverage
+    And it requires actual full-suite lint and read-only format evidence
+    And it forbids PASS without successful required checks
+    And it classifies unavailable required tools or evidence as BLOCKED
 
   @contract
   Scenario: Risk triggers independent QA despite self implementation
@@ -87,7 +87,13 @@ Feature: Optional autonomous Pulsar Agent Turbo execution
     And the operator observes a plan and approval gate before the bug fix
     And the operator observes verified QA and optional independent workers on the risky feature
     And the operator records actual worker launches and QA command output
+    And the operator confirms targeted RED GREEN REFACTOR evidence before the full suite
+    And the operator confirms independent intragent tool calls ran concurrently when safe
+    And the operator confirms the full suite and QA review were not skipped in solo mode
     # Manual verification: run these three tasks with an OpenCode build
     # installed from the branch. Inspect task spawn events and generated
     # .pas/state artifacts; approve only in the disposable repository.
+    # Preserve execution traces, targeted and full-suite command exit codes,
+    # and the final SELF/INDEPENDENT QA evidence; static prompt tests alone
+    # do not prove actual runtime concurrency or test execution.
     # A human operator records the evidence and any model-dependent deviation.
