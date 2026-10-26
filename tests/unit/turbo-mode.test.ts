@@ -48,7 +48,8 @@ describe('Pulsar Agent Turbo alternative primary mode', () => {
     }
     expect(directExecution).toContain('shell checks');
     expect(directExecution).toContain('concurrently');
-    expect(directExecution).toContain('shared');
+    expect(directExecution).toContain('Serialize edits');
+    expect(directExecution).toContain('sharing output directories');
     expect(directExecution).toContain('test-runner concurrency');
     expect(directExecution).toContain('actively changing tree');
   });
