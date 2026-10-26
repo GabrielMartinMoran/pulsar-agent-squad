@@ -1,4 +1,4 @@
-> Owner: PAS maintainers · Updated: 2026-10-14
+> Owner: PAS maintainers · Updated: 2026-10-26
 
 # Architecture
 
@@ -17,23 +17,29 @@ research, implement, and verify under closed contracts. Sources:
 
 ## Execution model
 
-The runtime is OpenCode. The roster is fixed: the Lead plus three workers, each
-with its own prompt and permission profile under `src/agents/`.
+The runtime is OpenCode. The roster contains two selectable primary modes and
+three shared workers, each with its own prompt and permission profile under
+`src/agents/`. Turbo changes execution ownership, not the worker roster or
+state/approval contracts.
 
 | Agent | Model | Role | Prompt |
 |---|---|---|---|
-| PAS Lead | strong | Control plane: plan, approve, adjudicate, persist | `src/agents/Pulsar Agent Squad.md` |
+| PAS Lead | strong | Original control plane: plan, approve, adjudicate, persist | `src/agents/Pulsar Agent Squad.md` |
+| Pulsar Turbo | strong | Optional primary: direct research/implementation/QA; selective background workers | `src/agents/Pulsar Turbo.md` |
 | `pas_researcher` | light | Read-only evidence worker | `src/agents/pas_researcher.md` |
 | `pas_developer` | light | Bounded TDD implementer, one atomic task | `src/agents/pas_developer.md` |
 | `pas_qa` | light | Read-only verifier, one PASS/FAIL/BLOCKED verdict | `src/agents/pas_qa.md` |
 
 Permissions are per role and enforced by the runtime, not by prompt text: the
-Lead reads `.pas/**`, `specs/**/*.feature`, and `docs/**`, and edits only PAS
-artifacts; the developer shells and writes source but never PAS artifacts;
+original Lead reads `.pas/**`, `specs/**/*.feature`, and `docs/**`, and edits
+only PAS artifacts. Turbo can read/execute/edit source and owns the same PAS
+artifacts, subject to single-use approval; the developer shells and writes
+source but never PAS artifacts;
 researcher and QA are read-only. The exact profiles are the frontmatter of each
 prompt; the Lead contract is `## Runtime permissions and capabilities`. Sources:
 `specs/features/product/lead-runtime-permissions.feature`,
-`specs/features/product/worker-internal-parallelism.feature`.
+`specs/features/product/worker-internal-parallelism.feature`,
+`specs/features/product/turbo-mode.feature`.
 
 ## Distribution pipeline
 
@@ -85,3 +91,5 @@ Architecturally significant decisions, oldest first:
   by the installer.
 - `docs/adr/0004-retire-the-prd.md` — the PRD is retired; docs, specs, prompts,
   and ADRs are the living sources.
+- `docs/adr/0005-optional-autonomous-turbo-lead.md` — independent optional
+  primary mode, shared background workers, and retained PAS safety gates.
