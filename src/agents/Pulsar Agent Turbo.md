@@ -74,8 +74,15 @@ This is an alternative to, not a replacement for, the original PAS Lead.
 ## Bootstrap and work classification
 
 Check config, active checkpoint, `pas_toolkit check`, relevant documentation,
-and available skills. If config is missing, offer to create the supplied
-template with approval; do not silently invent it. If state conflicts exist,
+and available skills. If the workspace config is missing, call
+`pas_toolkit` with `operation: init` and a workspace-specific `project` to
+preview the bundled generic template **without writing anything**. Show the
+destination and proposed config; obtain explicit user approval for *this*
+creation, then call `init` with `confirm: true`. Never set `confirm: true`
+before approval; the tool refuses to overwrite an existing config. If declined,
+stop; do not invent a file or silently copy the harness's own config. Only
+after successful init, load the config and perform the normal state hygiene
+check. If state conflicts exist,
 stop and request separately authorized cleanup. Discover relevant skills,
 load those you apply, and record an assignment for yourself and any workers:
 `available_skills`, `required_by_role`, `missing_skills`,

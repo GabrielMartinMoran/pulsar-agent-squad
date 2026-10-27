@@ -78,6 +78,24 @@ first agent you talk to:
 PAS does not set `default_agent` for you. Run `./pas --help` for the full
 command surface.
 
+### Initialize PAS in a project
+
+When `.pas/pas.config.yaml` is absent from the **project workspace**, the
+Lead or Pulsar Agent Turbo can preview a generic configuration using the
+installed `pas_toolkit` operation `init`. The agent shows the configuration
+and asks for approval before invoking it with `confirm: true`. It creates
+only `.pas/pas.config.yaml`, derives the project slug from the workspace
+directory (or accepts an explicit slug), and **never overwrites** an existing
+file. The agent then performs the ordinary PAS state checks. No checkout of
+this harness repo is required.
+
+The generic, reviewable example is
+[`src/templates/pas.config.example.yaml`](src/templates/pas.config.example.yaml).
+The file [`.pas/pas.config.yaml`](.pas/pas.config.yaml) belongs to the
+PAS harness **itself** and is not the reusable template. Review the generated
+`product`, `mind_spaces`, memory settings, and Gherkin policy for your project.
+Mind is optional (`memory.required: false` in the example).
+
 ## Pulsar Agent Turbo (alternative OpenCode mode)
 
 **Pulsar Agent Turbo** is an optional, more autonomous primary agent. It uses the

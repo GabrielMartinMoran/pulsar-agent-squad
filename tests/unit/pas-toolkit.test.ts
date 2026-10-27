@@ -11,6 +11,8 @@ import pasToolkit, {
   archiveFeatureState,
   checkState,
   createFeatureState,
+  initProjectConfig,
+  renderProjectConfig,
   defaultStateConfig,
   listState,
   loadStateConfig,
@@ -105,6 +107,66 @@ afterEach(() => {
     const root = roots.pop();
     if (root) rmSync(root, { recursive: true, force: true });
   }
+});
+
+describe('portable PAS project configuration bootstrap', () => {
+  it('keeps the distributed generic example byte-identical to the plugin template', () => {
+    const example = readFileSync('src/templates/pas.config.example.yaml', 'utf-8');
+    expect(renderProjectConfig('example-project')).toBe(example);
+    expect(example).toContain('product: example-project');
+    expect(example).toContain('name: "projects/example-project"');
+    expect(example).not.toContain('product: pulsar-agent-squad');
+  });
+
+  it('previews the inferred project without creating config or state directories', () => {
+    const root = makeRoot();
+    const result = initProjectConfig(root);
+    expect(result.ok).toBe(true);
+    expect(result.text).toContain('NO FILES WRITTEN');
+    expect(result.text).toContain('Destination:');
+    expect(result.text).toContain('explicit approval');
+    expect(result.text).toContain('confirm: true');
+    expect(existsSync(join(root, '.pas'))).toBe(false);
+  });
+
+  it('creates a working workspace-scoped config only after confirmation', () => {
+    const root = makeRoot();
+    const preview = initProjectConfig(root, { project: 'my-service' });
+    expect(preview.text).toContain('product: my-service');
+    expect(existsSync(join(root, '.pas/pas.config.yaml'))).toBe(false);
+
+    const created = initProjectConfig(root, { project: 'my-service', confirm: true });
+    expect(created.ok).toBe(true);
+    const contents = readFileSync(join(root, '.pas/pas.config.yaml'), 'utf-8');
+    expect(contents).toBe(renderProjectConfig('my-service'));
+    expect(contents).toContain('name: "projects/my-service"');
+    expect(checkState(root).ok).toBe(true);
+    expect(createFeatureState(root, 'first-feature').ok).toBe(true);
+    expect(existsSync(join(root, '.pas/state/active/00001-first-feature/state.md'))).toBe(true);
+  });
+
+  it('never overwrites an existing config, including when confirmed', () => {
+    const root = makeRoot();
+    writeConfig(root, 'product: user-customized\\n');
+    const original = readFileSync(join(root, '.pas/pas.config.yaml'), 'utf-8');
+    for (const confirm of [undefined, true]) {
+      const result = initProjectConfig(root, { project: 'different', confirm });
+      expect(result.ok).toBe(false);
+      expect(result.text).toContain('refusing to overwrite');
+    }
+    expect(readFileSync(join(root, '.pas/pas.config.yaml'), 'utf-8')).toBe(original);
+  });
+
+  it('refuses invalid project names and does not accept a truthy non-boolean confirmation', () => {
+    const root = makeRoot();
+    for (const project of ['../../escape', 'Not a slug', 'evil: value', '']) {
+      const result = initProjectConfig(root, { project, confirm: true });
+      expect(result.ok).toBe(false);
+    }
+    const fakeConfirmation = initProjectConfig(root, { project: 'valid', confirm: 'yes' as unknown as boolean });
+    expect(fakeConfirmation.text).toContain('NO FILES WRITTEN');
+    expect(existsSync(join(root, '.pas'))).toBe(false);
+  });
 });
 
 describe('parseStateConfig', () => {
@@ -683,11 +745,13 @@ describe('pas_toolkit plugin surface', () => {
     expect(tool.name).toBe(TOOL_NAME);
     expect(tool.name).toBe('pas_toolkit');
     expect(tool.description).toBe(TOOL_DESCRIPTION);
-    expect(tool.description).toContain('Not for general use.');
+    expect(tool.description).toContain('For PAS harness agents only.');
     expect(tool.input).toEqual({
       type: 'object',
       properties: {
-        operation: { enum: ['list', 'check', 'new', 'archive'] },
+        operation: { enum: ['init', 'list', 'check', 'new', 'archive'] },
+        project: { type: 'string' },
+        confirm: { type: 'boolean' },
         slug: { type: 'string' },
         feature: { type: 'string' },
         root: { type: 'string' },
@@ -708,6 +772,24 @@ describe('pas_toolkit plugin surface', () => {
 
     expect(result.content).toContain(`Workspace: ${root}`);
     expect(result.content).toContain('Active (0/1):');
+  });
+
+  it('supports preview and confirmed init through the registered tool', async () => {
+    const root = makeRoot();
+    const tool = await captureTool(root);
+
+    const preview = await tool.execute({ operation: 'init', project: 'sample-app' });
+    expect(preview.content).toContain('NO FILES WRITTEN');
+    expect(preview.content).toContain(`Workspace: ${root}`);
+    expect(existsSync(join(root, '.pas/pas.config.yaml'))).toBe(false);
+
+    const created = await tool.execute({ operation: 'init', project: 'sample-app', confirm: true });
+    expect(created.content).toContain('Created PAS project config:');
+    expect(created.content).toContain(`Workspace: ${root}`);
+    expect(readFileSync(join(root, '.pas/pas.config.yaml'), 'utf-8')).toContain('product: sample-app');
+
+    const second = await tool.execute({ operation: 'init', confirm: true });
+    expect(second.content).toContain('refusing to overwrite');
   });
 
   it('lets input.root override the workspace', async () => {

@@ -1,7 +1,7 @@
 /**
  * PAS toolkit: single-file OpenCode V2 plugin exposing the `pas_toolkit` tool.
  *
- * Harness-only state lifecycle operations (`list`, `check`, `new`, `archive`)
+ * Harness operations (`init`, `list`, `check`, `new`, `archive`)
  * over the numbered `NNNNN-slug` feature directories described by the `state:`
  * block of `.pas/pas.config.yaml`.
  *
@@ -15,17 +15,19 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 
 export const TOOL_NAME = 'pas_toolkit';
 
 export const TOOL_DESCRIPTION =
-  'PAS harness toolkit: internal state-lifecycle tools (list, check, new, archive) for the PAS orchestrator harness only. Not for general use.';
+  'PAS harness toolkit: initialize project config and manage numbered state (init, list, check, new, archive). For PAS harness agents only.';
 
 export const TOOL_INPUT_SCHEMA = {
   type: 'object',
   properties: {
-    operation: { enum: ['list', 'check', 'new', 'archive'] },
+    operation: { enum: ['init', 'list', 'check', 'new', 'archive'] },
+    project: { type: 'string' },
+    confirm: { type: 'boolean' },
     slug: { type: 'string' },
     feature: { type: 'string' },
     root: { type: 'string' },
@@ -105,9 +107,130 @@ export interface OperationResult {
 
 export interface ToolkitInput {
   operation: string;
+  project?: string;
+  confirm?: boolean;
   slug?: string;
   feature?: string;
   root?: string;
+}
+
+/**
+ * Portable PAS configuration template. The example file in
+ * src/templates/pas.config.example.yaml must match
+ * renderProjectConfig('example-project') (enforced by a unit test).
+ * Keep the template inside this single-file plugin so it is available
+ * after installation into any OpenCode workspace.
+ */
+export function renderProjectConfig(project: string): string {
+  return [
+    '# PAS project configuration — edit to fit this repository',
+    'version: "0.1"',
+    `product: ${project}`,
+    '',
+    'runtime:',
+    '  primary: opencode',
+    '',
+    'state:',
+    '  root: ".pas/state"',
+    '  active_path: ".pas/state/active"',
+    '  archived_path: ".pas/state/archived"',
+    '  max_active: 1',
+    '  numbering:',
+    '    start: 1',
+    '    width: 5',
+    '    source: archived',
+    '',
+    '# Mind is optional; disable it if not installed.',
+    'memory:',
+    '  enabled: true',
+    '  provider: mind',
+    '  required: false',
+    '',
+    'mind_spaces:',
+    '  project_space:',
+    '    enabled: true',
+    `    name: "projects/${project}"`,
+    '    description: "Project context, decisions, architecture, and checkpoints"',
+    '',
+    'gherkin:',
+    '  enabled: true',
+    '  storage_path: "specs/features"',
+    '  format: gherkin',
+    '  filename_namespace: global',
+    '  persist_to_repo:',
+    '    when: "on_done"',
+    '    format: "merged"',
+    '  include:',
+    '    - "product/*"',
+    '    - "application/*"',
+    '  exclude:',
+    '    - "researcher/*"',
+    '    - "sandbox/*"',
+    '',
+    'sdd:',
+    '  enabled: true',
+    '  change_memory:',
+    '    auto_create: true',
+    '  delta:',
+    '    removal_policy: "remove"',
+    '    resolve_on: "on_done"',
+    '  memory_tracking: true',
+    '',
+    'config_policy:',
+    '  require_confirmation: true',
+    '',
+    'models:',
+    '  lead: strong',
+    '  researcher: light',
+    '  developer: light',
+    '  qa: light',
+    '',
+  ].join('\n');
+}
+
+export function initProjectConfig(
+  root: string,
+  options: { project?: string; confirm?: boolean } = {},
+): OperationResult {
+  const workspace = resolve(root);
+  const configPath = join(workspace, CONFIG_RELATIVE_PATH);
+
+  if (existsSync(configPath)) {
+    return blocked(`config already exists (${configPath}); refusing to overwrite it`);
+  }
+
+  const inferred = basename(workspace).toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
+  const project = options.project ?? inferred;
+  if (typeof project !== 'string' || !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(project)) {
+    return blocked('invalid project; provide a lowercase kebab-case slug of 1–64 characters');
+  }
+  const config = renderProjectConfig(project);
+
+  if (options.confirm !== true) {
+    return {
+      ok: true,
+      text: [
+        `Preview PAS config for ${project} (NO FILES WRITTEN):`,
+        `Destination: ${configPath}`,
+        '',
+        config,
+        'Ask the user for explicit approval of this config and destination.',
+        'Only after approval, call pas_toolkit init with confirm: true.',
+      ].join('\n'),
+    };
+  }
+
+  try {
+    mkdirSync(join(workspace, '.pas'), { recursive: true });
+    writeFileSync(configPath, config, { flag: 'wx' });
+  } catch (error) {
+    return blocked(`could not initialize config (never overwrites): ${describeError(error)}`);
+  }
+  return {
+    ok: true,
+    text: `Created PAS project config: ${configPath} (product: ${project}). Review optional Mind settings before proceeding.`,
+  };
 }
 
 export function defaultStateConfig(): StateConfig {
@@ -595,6 +718,8 @@ export function archiveFeatureState(
 
 export function runToolkitOperation(input: ToolkitInput, workspace: string): string {
   switch (input.operation) {
+    case 'init':
+      return initProjectConfig(workspace, { project: input.project, confirm: input.confirm }).text;
     case 'list':
       return listState(workspace);
     case 'check':
