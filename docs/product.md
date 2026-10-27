@@ -24,6 +24,10 @@ Each group names its behavior contracts:
 - **Runtime permissions** — fixed, documented permission profiles per role;
   denials are policy and route work instead of blocking it. Contracts:
   `specs/features/product/lead-runtime-permissions.feature`.
+- **First-run workspace config** — preview a portable PAS configuration,
+  request explicit approval, and create it safely using the installed
+  `pas_toolkit init` operation without cloning the harness. Contract:
+  `specs/features/product/project-config-bootstrap.feature`.
 - **State lifecycle** — numbered feature directories, single-writer state
   operations through the installed toolkit, hygiene detection. Contracts:
   `specs/features/product/state-hygiene.feature`.
