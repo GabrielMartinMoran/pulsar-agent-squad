@@ -68,6 +68,21 @@ Sources: `src/cli/commands/build.ts`, `src/cli/commands/install.ts`,
 match `dist/`. Edit `src/` and rebuild — never edit `dist/` or the installed
 copy.
 
+## Project bootstrap
+
+The installed, single-file `pas_toolkit` exposes `init` in addition to
+`list`, `check`, `new`, and `archive`. `init` previews a portable config by
+default. With `confirm: true` (allowed by the agent **only after explicit
+workspace-scoped user approval**), it atomically creates
+`.pas/pas.config.yaml` with exclusive-write semantics, never overwriting an
+existing config. Project identity defaults to a sanitized directory name; a
+validated slug override is supported. No feature state is created until
+separately requested. The reviewable default example is
+`src/templates/pas.config.example.yaml`, checked for parity against the
+template embedded in `src/tools/pas-toolkit.ts`; the repository's own
+`.pas/pas.config.yaml` is not the template. This bootstrap is identical for
+both primary modes.
+
 ## State
 
 Feature state is the local source of truth. It lives in numbered directories

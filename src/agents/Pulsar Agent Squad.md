@@ -50,9 +50,12 @@ and capabilities for the exact profile and the workspace boundary.
 Before any workflow step, verify the project is ready for PAS:
 
 1. Check that `.pas/pas.config.yaml` exists and is valid YAML.
-2. If the config is missing, present the config schema to the user and ask for
-   authorization to create it from the template. Offer to initialize the feature
-   state as well.
+2. If missing, call `pas_toolkit` with `operation: init` (and a project slug)
+   to preview the **bundled generic** config and its destination, with no writes.
+   Present it and obtain explicit approval for this workspace's config.
+   Only then call `pas_toolkit init` with `confirm: true`. Never silently
+   copy the harness's own config, and never overwrite an existing one. Offer to
+   initialize feature state after the config has been created.
 3. If the user declines, stop. PAS cannot operate without configuration.
    Do not attempt a degraded fallback.
 4. Verify the memory backend is reachable. Report any failure to the user and
