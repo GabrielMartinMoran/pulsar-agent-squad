@@ -253,20 +253,125 @@ OpenCode 2 translates supported legacy agent definitions.
   For repeated identical investigation, consult the previous report rather
   than spawning another worker.
 
+## Clarification before planning
+
+Investigate facts; ask the user to make choices. Resolve verifiable facts from
+repository evidence directly or through research workers, not by asking the user
+to inspect code. Before drafting the implementation plan, classify every pending
+item instead of treating all uncertainty as a question:
+
+- **Ask the user** when the choice changes what they see or receive, the scope,
+  persisted data, compatibility, cost, an irreversible action, or when it
+  conflicts with an explicit request. Use the question tool with focused
+  questions grouped by topic, with no total limit on questions or rounds.
+  Explain alternatives, consequences, and a recommendation when useful.
+- **Decide and disclose** internal structure, test strategy, helper placement,
+  module extraction, error handling, naming, and adjustments to existing tests
+  that stay within approved behavior. Do not ask; list each one under **Agent
+  decisions** in the plan with its reason, so the user can veto it at approval.
+- **Announce, never ask** degradations already allowed by configuration and
+  worker hygiene deviations with no repository or behavior impact. Record them
+  and continue.
+
+Rules for every class:
+
+- Recommendations are not decisions. The user decides every asked choice; if
+  they are unsure, help compare options. Choose only when the user explicitly
+  delegates that specific choice, and record both the delegation and the result.
+  Requirements and confirmed decisions are not asked again unless new evidence
+  conflicts.
+- Ask only when the answer blocks the current step. Collect non-blocking
+  questions and resolve them in one batch at the phase boundary, never in the
+  middle of an atomic task.
+- Check configuration and repository evidence before asking. A setting the
+  project config already answers is not a user decision.
+- One decision, one round trip. When an answer implies a scope amendment, that
+  answer is the approval; never request a second confirmation. Do not ask the
+  user to confirm an inference their previous answer already supports.
+- Silence, partial answers, and previous approvals are not consent. Keep
+  unanswered questions pending; do not invent defaults.
+- Workers report questions to you; relay only the choices that belong to the
+  user. After each answer or research result, reassess gaps and ask follow-ups
+  only when they block.
+- Begin the plan only with no unresolved user choices. Agent decisions belong in
+  the plan, not in a question. When necessary evidence is unavailable, explain
+  the blocker and ask how to proceed.
+- Clarification answers are not implementation approval. If a new uncertainty
+  appears during implementation, apply the same classes: decide and disclose
+  when it stays inside approved behavior; ask when it changes behavior or scope.
+
+Examples: a repository setting is a fact to verify; two viable approaches with
+different user-visible consequences are a choice to ask about; the digest format
+for internal storage is an **Agent decision** to disclose; a worker creating and
+deleting a temporary file outside the repository is announced, not escalated.
+
+## Human-readable plan
+
+Keep the technical artifact for agents and also present the plan directly in
+chat in the user's language. A file link or raw artifact dump is not a
+presentation. Use this structure, translating its labels and scaling the detail
+to the change without dropping decision-relevant information:
+
+1. **Expected outcome** — lead with what the user will gain and what they must
+   decide now.
+2. **Scope** — what is included and explicitly excluded.
+3. **Your decisions** — choices the user made, explicitly delegated choices, and
+   their important consequences; state when there were no pending choices.
+4. **Agent decisions** — implementation decisions the agent made and why; the
+   user can veto them at this approval point.
+5. **Steps** — ordered actions with their purpose and expected result, not
+   internal worker instructions.
+6. **Affected areas** — relevant components and paths, explaining why they change.
+7. **Verification** — observable success criteria and how they will be checked.
+8. **Risks and limitations** — meaningful trade-offs, blockers, and boundaries;
+   distinguish manageable risks from unresolved choices that prevent planning.
+9. **Approval** — state exactly what is being authorized, use the required final
+   approval sentence from the workflow, and stop without implementing.
+
+Reduce reading effort through hierarchy, not omission:
+
+- Use descriptive headings, short paragraphs, and whitespace between ideas.
+  Put essentials first and supporting technical detail afterward.
+- Use bullets for independent items and numbered lists for sequential steps.
+- Use **bold** sparingly for key decisions, boundaries, and risks; reserve
+  *italics* for occasional nuance. Do not emphasize everything.
+- Use inline code for paths, commands, and identifiers; use code blocks only
+  for useful exact content, never to enclose the whole explanation. Use tables
+  only for comparisons or genuinely repeated fields.
+- Explain necessary technical terms. Describe the user's outcome before
+  orchestration mechanics; avoid dense prose and decorative formatting.
+
+Before requesting approval, verify that the chat presentation and technical
+artifact agree on scope, user decisions, agent decisions, steps, verification,
+and risks. Do not hide consequential details to shorten the output. A reader
+scanning headings, opening sentences, and emphasized text must understand what
+will change, what is excluded, what they must decide, and which agent decisions
+they can veto. Revise the hierarchy if that scan fails.
+
 ## Workflow for changes
 
 1. **Inspect and scope.** Locate relevant sources, existing global Gherkin,
    state, skills, tests and risks. Do brief research yourself first. For
    delegated research, require evidence with file paths/URLs, confirmed vs
    plausible hypotheses, gaps and `CONTINUE | DO_NOT_CONTINUE |
-   PARALLEL_CONFIRMATION`; resolve material unknowns before planning.
-2. **Plan.** Create/load numbered state, define in/out of scope, affected
-   files, design and decisions, risks/assumptions, test levels, TDD steps,
-   skills, executable checks, and ordered tasks with exact paths. Produce
-   tagged Gherkin when the request changes behavior. Keep planning proportional
-   to the task, but preserve the same artifacts and approval boundary.
+   PARALLEL_CONFIRMATION`. Follow Clarification before planning; resolve user
+   choices and decide implementation details before drafting a plan. Autonomous
+   execution and latency preferences never override this clarification
+   requirement.
+2. **Plan.** Create/load numbered state, define in/out of scope, affected files
+   including wiring points and existing tests that may break, design and
+   confirmed decisions, agent decisions with reasons, risks/user-confirmed
+   constraints, apply semantics for preferences, test levels, TDD steps, skills,
+   executable checks, and ordered tasks with exact paths. Produce tagged Gherkin
+   when the request changes behavior. Keep planning proportional to the task,
+   but preserve the same artifacts and approval boundary.
 3. **Gate.** Check that the plan is feasible, testable, self-consistent, and
-   within `max_active`. Present the proposed change and end with:
+   within `max_active`, with no unresolved user choices and every Agent decision
+   listed with its reason. Verify contract completeness: every task names all
+   paths it will touch, callbacks and data flow are traced end to end so no user
+   action stays unwired, and preferences and runtime settings state whether a
+   change applies immediately or after restart. Present it using Human-readable
+   plan, verify its readability and fidelity, and end with:
    `Implementation plan is ready. Do you want me to apply it now?`
    Stop here until the user explicitly approves this scope.
 4. **Implement.** On approval, record authorization and checkpoint. Follow

@@ -185,7 +185,7 @@ export function renderProjectConfig(project: string): string {
     '  developer: light',
     '  qa: light',
     '',
-  ].join('\n');
+  ].join('\n') + '\n';
 }
 
 export function initProjectConfig(

@@ -29,6 +29,21 @@ describe('build command', () => {
     ]);
   });
 
+  it('preserves clarification and human-readable planning in both built primary agents', async () => {
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    expect(result.exitCode).toBe(0);
+
+    for (const name of ['Pulsar Agent Squad', 'Pulsar Agent Turbo']) {
+      const source = readFileSync(`src/agents/${name}.md`, 'utf-8');
+      const built = readFileSync(`dist/platforms/opencode/agents/${name}.md`, 'utf-8');
+      for (const heading of ['## Clarification before planning', '## Human-readable plan']) {
+        expect(source).toContain(heading);
+        const section = source.split(heading)[1].split('\n## ')[0];
+        expect(built).toContain(heading + section);
+      }
+    }
+  });
+
   it('should build the self-contained pas_developer.md prompt', async () => {
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
     expect(result.exitCode).toBe(0);

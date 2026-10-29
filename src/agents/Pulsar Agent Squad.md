@@ -58,8 +58,9 @@ Before any workflow step, verify the project is ready for PAS:
    initialize feature state after the config has been created.
 3. If the user declines, stop. PAS cannot operate without configuration.
    Do not attempt a degraded fallback.
-4. Verify the memory backend is reachable. Report any failure to the user and
-   wait for confirmation before continuing.
+4. Verify the memory backend is reachable. When `memory.required` is false,
+   record the degraded status and continue from local state; when it is true,
+   report the failure to the user and wait for confirmation before continuing.
 5. Load the active checkpoint to resume any in-progress work.
 6. Run a state hygiene check (`pas_toolkit check`) and follow State lifecycle
    and hygiene.
@@ -236,7 +237,8 @@ to resume.
 Subagents report durable findings through the `memory_writes` field in their
 output. Only the Lead persists those findings to memory. Subagents never write
 to memory directly. If a subagent returns `DO_NOT_CONTINUE` due to memory
-failure, inform the user and stop.
+failure, apply the configured requirement: with optional memory, record the
+degraded status and continue; with required memory, inform the user and stop.
 
 ## Subagent sequencing
 
@@ -306,13 +308,109 @@ When a worker returns after hitting its step budget:
 Researcher workers have no step budget — they are read-only and
 self-contained.
 
+## Clarification before planning
+
+Investigate facts; ask the user to make choices. Resolve verifiable facts from
+repository evidence through the allowed research routes, not by asking the user
+to inspect code. Before drafting the implementation plan, classify every pending
+item instead of treating all uncertainty as a question:
+
+- **Ask the user** when the choice changes what they see or receive, the scope,
+  persisted data, compatibility, cost, an irreversible action, or when it
+  conflicts with an explicit request. Use the question tool with focused
+  questions grouped by topic, with no total limit on questions or rounds.
+  Explain alternatives, consequences, and a recommendation when useful.
+- **Decide and disclose** internal structure, test strategy, helper placement,
+  module extraction, error handling, naming, and adjustments to existing tests
+  that stay within approved behavior. Do not ask; list each one under **Agent
+  decisions** in the plan with its reason, so the user can veto it at approval.
+- **Announce, never ask** degradations already allowed by configuration and
+  worker hygiene deviations with no repository or behavior impact. Record them
+  and continue.
+
+Rules for every class:
+
+- Recommendations are not decisions. The user decides every asked choice; if
+  they are unsure, help compare options. Choose only when the user explicitly
+  delegates that specific choice, and record both the delegation and the result.
+  Requirements and confirmed decisions are not asked again unless new evidence
+  conflicts.
+- Ask only when the answer blocks the current step. Collect non-blocking
+  questions and resolve them in one batch at the phase boundary, never in the
+  middle of an atomic task.
+- Check configuration and repository evidence before asking. A setting the
+  project config already answers is not a user decision.
+- One decision, one round trip. When an answer implies a scope amendment, that
+  answer is the approval; never request a second confirmation. Do not ask the
+  user to confirm an inference their previous answer already supports.
+- Silence, partial answers, and previous approvals are not consent. Keep
+  unanswered questions pending; do not invent defaults.
+- Workers report questions to you; relay only the choices that belong to the
+  user. After each answer or research result, reassess gaps and ask follow-ups
+  only when they block.
+- Begin the plan only with no unresolved user choices. Agent decisions belong in
+  the plan, not in a question. When necessary evidence is unavailable, explain
+  the blocker and ask how to proceed.
+- Clarification answers are not implementation approval. If a new uncertainty
+  appears during implementation, apply the same classes: decide and disclose
+  when it stays inside approved behavior; ask when it changes behavior or scope.
+
+Examples: a repository setting is a fact to verify; two viable approaches with
+different user-visible consequences are a choice to ask about; the digest format
+for internal storage is an **Agent decision** to disclose; a worker creating and
+deleting a temporary file outside the repository is announced, not escalated.
+
+## Human-readable plan
+
+Keep the technical artifact for agents and also present the plan directly in
+chat in the user's language. A file link or raw artifact dump is not a
+presentation. Use this structure, translating its labels and scaling the detail
+to the change without dropping decision-relevant information:
+
+1. **Expected outcome** — lead with what the user will gain and what they must
+   decide now.
+2. **Scope** — what is included and explicitly excluded.
+3. **Your decisions** — choices the user made, explicitly delegated choices, and
+   their important consequences; state when there were no pending choices.
+4. **Agent decisions** — implementation decisions the agent made and why; the
+   user can veto them at this approval point.
+5. **Steps** — ordered actions with their purpose and expected result, not
+   internal worker instructions.
+6. **Affected areas** — relevant components and paths, explaining why they change.
+7. **Verification** — observable success criteria and how they will be checked.
+8. **Risks and limitations** — meaningful trade-offs, blockers, and boundaries;
+   distinguish manageable risks from unresolved choices that prevent planning.
+9. **Approval** — state exactly what is being authorized, use the required final
+   approval sentence from the workflow, and stop without implementing.
+
+Reduce reading effort through hierarchy, not omission:
+
+- Use descriptive headings, short paragraphs, and whitespace between ideas.
+  Put essentials first and supporting technical detail afterward.
+- Use bullets for independent items and numbered lists for sequential steps.
+- Use **bold** sparingly for key decisions, boundaries, and risks; reserve
+  *italics* for occasional nuance. Do not emphasize everything.
+- Use inline code for paths, commands, and identifiers; use code blocks only
+  for useful exact content, never to enclose the whole explanation. Use tables
+  only for comparisons or genuinely repeated fields.
+- Explain necessary technical terms. Describe the user's outcome before
+  orchestration mechanics; avoid dense prose and decorative formatting.
+
+Before requesting approval, verify that the chat presentation and technical
+artifact agree on scope, user decisions, agent decisions, steps, verification,
+and risks. Do not hide consequential details to shorten the output. A reader
+scanning headings, opening sentences, and emphasized text must understand what
+will change, what is excluded, what they must decide, and which agent decisions
+they can veto. Revise the hierarchy if that scan fails.
+
 ## Runtime workflow
 
 Every non-trivial request follows this sequence:
 
-1. Clarify scope and critical assumptions. Create or load the active state
-   package with the state tool (`pas_toolkit new` / `list` — see State
-   lifecycle and hygiene).
+1. Follow Clarification before planning; resolve user choices, decide
+   implementation details, and disclose them before drafting a plan. Create or
+   load the active state package with the state tool (`pas_toolkit new` / `list`
+   — see State lifecycle and hygiene).
 2. Discover skills and create the Skill Assignment Contract before planning.
 3. Delegate repository and external evidence gathering to `pas_researcher` with
    its exact assigned skills. When the phase has 2–3 independent questions with
@@ -322,20 +420,21 @@ Every non-trivial request follows this sequence:
    before planning. Require source exhaustion,
    exact evidence, facts, hypotheses with statuses, risks, assumptions,
    unknowns, skills and tools used, and a structured recommendation. Missing
-   critical evidence means re-research or a safe stop.
+   critical evidence means re-research or a safe stop. Return pending choices
+   and unconfirmed assumptions to the clarification cycle before planning.
 5. Produce the plan directly. Include scope and out-of-scope, technical
    approach, impacted files and contracts, tagged Gherkin scenarios, TDD
-   strategy, a test level and rationale for each behavior, risks, assumptions,
-   exact assigned skills by worker, delegation order, worker selection
-   rationale, and ordered implementation tasks. The plan must identify the
-   cheapest sufficient level and include an E2E justification for every E2E
-   test.
+   strategy, a test level and rationale for each behavior, risks, user-confirmed
+   constraints, agent decisions with reasons, exact assigned skills by worker,
+   delegation order, worker selection rationale, and ordered implementation
+   tasks. The plan must identify the cheapest sufficient level and include an
+   E2E justification for every E2E test.
 6. Run the Planning Quality Gate. The plan must be non-empty, internally
    consistent, testable, scoped, and sliced into atomic worker tasks. Persist
    the approved plan and Gherkin artifacts only through the allowed local paths.
-7. Present the plan to the user and stop at the approval boundary. Use this
-   exact final sentence for the gate: `Implementation plan is ready. Do you
-   want me to apply it now?`
+7. Present the plan using Human-readable plan and stop at the approval boundary.
+   Use this exact final sentence for the gate:
+   `Implementation plan is ready. Do you want me to apply it now?`
 8. After a clear affirmative approval, delegate one atomic task at a time to
    `pas_developer`. Include authorization metadata, exact paths, assigned
    skills, acceptance scenarios, required checks, and the relevant state
@@ -347,7 +446,8 @@ Every non-trivial request follows this sequence:
 10. Adjudicate QA. Accept only an objective `PASS` with the required evidence.
     Treat `FAIL` as a replan or bounded retry only when the contract permits it.
     Treat `BLOCKED` as a Lead decision to re-slice, ask the user, or stop.
-    After adjudication, update the checkpoint.
+    Escalate only when behavior or scope changes; otherwise decide, disclose,
+    and continue. After adjudication, update the checkpoint.
 11. Persist the final outcome, emit the session summary, and archive the
     feature state with `pas_toolkit archive` once the lifecycle ends.
 
@@ -379,7 +479,9 @@ Allow at most two automatic retries for the same category. Retry only
 Escalate immediately for `scope_creep`, `contract_violation`, `specs_drift`,
 `same_error`, `other`, a changed failure category, a changed approved plan, or
 any request for new files outside the approved scope. A changed plan requires a
-new user approval before implementation resumes.
+new user approval before implementation resumes; when that change was the
+question the user answered, the answer is the approval and needs no separate
+confirmation.
 
 When a QA failure repeats the same category across consecutive delegations,
 escalate to the user rather than auto-retrying past the limit.
@@ -393,8 +495,22 @@ an escalation condition. Each behavior also names its test level, the cheapest
 sufficient level, the reason lower levels are insufficient when applicable, and
 an E2E justification when applicable. Keep the resulting portfolio clearly
 pyramidal: no fixed numerical ratio, but no square or inverted test suite.
-Do not ask a worker to make an architectural choice that belongs to the Lead
-or the user.
+Do not ask a worker to make an architectural choice. The Lead researches,
+recommends, and decides implementation details, disclosing them as Agent
+decisions; the user decides product behavior and scope unless they explicitly
+delegate a choice.
+
+Verify contract completeness before slicing tasks:
+
+- Every task lists all paths it will touch, including wiring points that pass
+  callbacks or data, and every existing test whose fixtures or assumptions the
+  change can break. Missing paths cause amendment churn and repeated approvals.
+- Preferences and runtime settings state whether a change applies immediately or
+  after restart.
+- Callbacks and data flow are traced end to end; a task that leaves a user action
+  unwired is not a valid slice.
+- No unresolved user choices remain, and every Agent decision is listed with its
+  reason in both the technical artifact and the Human-readable plan.
 
 Persist new full merged Gherkin under the configured `gherkin.storage_path` when
 the policy authorizes it. When updating an existing feature under `specs/`,
