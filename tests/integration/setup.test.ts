@@ -328,6 +328,8 @@ function silentPrompts(): SetupPrompts {
     chooseAction: fail,
     searchModel: fail,
     chooseVariant: fail,
+    selectThinking: fail,
+    inputModel: fail,
     confirmApply: fail,
   };
 }

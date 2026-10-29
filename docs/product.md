@@ -1,4 +1,4 @@
-> Owner: PAS maintainers · Updated: 2026-10-26
+> Owner: PAS maintainers · Updated: 2026-10-29
 
 # Product
 
@@ -40,12 +40,22 @@ Each group names its behavior contracts:
 - **Project documentation** — living docs as maps, updated with the change,
   with an ADR trail. Contracts:
   `specs/features/product/project-documentation.feature`.
+- **Pi runtime target** — the same PAS workflow on Pi: native subagents and
+  skills, deterministic build and install, plugin installation from an editable
+  list, and a contractual permission boundary. Contract:
+  `specs/features/product/pi-runtime-target.feature`.
+- **Target-aware agents setup** — `pas agents setup` asks which tool to
+  configure, offers only OpenCode and Pi, and writes real per-subagent model
+  overrides with backups. Contract:
+  `specs/features/product/target-aware-agents-setup.feature`.
 
 ## Scope boundaries
 
-The MVP targets OpenCode first; multi-runtime support, NAS migration, and
-permanent daemons are out of scope. The scope boundaries are native to this doc
-(migrated from the retired PRD, 2026-10-14).
+The MVP remains OpenCode-first. Pi is a supported second runtime target
+(`docs/adr/0006-pi-runtime-target.md`), including agent model setup through
+`pas agents setup`; general multi-runtime support, NAS migration, and permanent
+daemons remain out of scope. The scope boundaries are
+native to this doc (migrated from the retired PRD, 2026-10-14).
 
 ## Who it serves
 

@@ -123,8 +123,13 @@ To try Turbo without replacing the standard Lead:
 ```bash
 ./pas build --target=opencode
 ./pas install --target=opencode
-./pas agents setup              # optionally select a strong model for Pulsar Agent Turbo
+./pas agents setup              # asks which tool to configure (OpenCode or Pi)
 ```
+
+`pas agents setup` asks which tool to configure and defaults to OpenCode. Pass
+`--target=<id>` to skip that prompt; an id without a setup adapter exits
+non-zero before reading or writing any configuration. Only OpenCode and Pi have
+setup adapters, even though the manifest declares more install targets.
 
 Choose **Pulsar Agent Turbo** in OpenCode's agent selector, or set
 `"default_agent": "Pulsar Agent Turbo"` in your OpenCode config. Switch back to
@@ -142,6 +147,96 @@ a V2 end-to-end run (including state lifecycle) is not yet certified.
 Sources: [Turbo agent](src/agents/Pulsar%20Agent%20Turbo.md),
 [behavior contract](specs/features/product/turbo-mode.feature),
 [ADR](docs/adr/0005-optional-autonomous-turbo-lead.md).
+
+## Pi target (alternative runtime)
+
+Pi is a supported second runtime target
+([ADR 0006](docs/adr/0006-pi-runtime-target.md)). PAS ships native Pi subagents
+and skills rather than transforming the OpenCode prompts. Pi 1.2.0 or newer is
+required for `pi-subagents`.
+
+```bash
+./pas build --target=pi
+./pas install --target=pi            # always installs the configured plugins
+./pas install --target=pi --dry-run  # print destinations and commands only
+./pas uninstall --target=pi          # remove only files PAS installed
+```
+
+Installation preflights the `pi` binary, copies agents, skills, settings, and
+the toolkit extension under `~/.pi/agent`, then installs every source in
+[`config/pi-packages.txt`](config/pi-packages.txt) with `pi install`. Sources
+already configured per `pi list` are skipped, and the first failure aborts
+non-zero. There is no `--with-plugins` flag: plugin installation is the default
+for this target. Uninstall removes only files whose basenames exist in the
+source trees, so unrelated files in the same directory survive.
+
+Start the workflow with `/skill:pas-lead` (control plane) or `/skill:pas-turbo`
+(autonomous primary). Both skills set `disable-model-invocation: true`, so they
+load only when invoked.
+
+To configure models, run the setup wizard from the checked-out repo:
+
+```bash
+./pas agents setup --target=pi
+```
+
+Pi 1.2.0 or newer is required for `pi-subagents`. The wizard runs these steps:
+
+1. Preflights the `pi` binary. If PAS's Pi artifacts are missing, it warns and
+   points to `pas install --target=pi`; it does not install them.
+2. Compares [`config/pi-packages.txt`](config/pi-packages.txt) with `pi list`
+   and offers to install missing packages once. It never removes packages. When
+   Pi is older than 1.2.0, `pi-subagents` is skipped with a warning and the other
+   missing packages still install.
+3. Re-reads `~/.pi/agent/settings.json` after any install, then asks which
+   subagent to configure. Only `pas_researcher`, `pas_developer`, and `pas_qa`
+   are offered: the Pi leads are skills, not subagents.
+4. Discovers models with `pi --list-models` and falls back to manual model-id
+   entry when the table yields no models.
+5. Offers a thinking level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`,
+   `max`) only when the chosen model reports thinking support.
+6. Writes `subagents.agentOverrides.<agent>` with `model`, `defaultProvider`,
+   and optional `thinking` in `~/.pi/agent/settings.json`. Unknown keys are
+   preserved, and the previous file is backed up as
+   `<path>.bak.<YYYYMMDDHHMMSS>` only when the content changes.
+7. Prints `Run /reload in Pi for changes to take effect.`
+
+Setup writes user scope only (`~/.pi/agent/settings.json`); it never writes a
+project `.pi/settings.json`.
+
+Workers inherit the parent model by default. The installed
+`pas-settings.snippet.json` remains a reference for manual tiering, while
+`pas agents setup --target=pi` writes the real settings for you. The snippet
+looks like this, and placeholder model IDs must exist in your Pi installation:
+
+```json
+{
+  "subagents": {
+    "defaultModel": "<model-id>",
+    "agentOverrides": {
+      "pas_researcher": { "model": "<model-id>" },
+      "pas_developer": { "model": "<model-id>" },
+      "pas_qa": { "model": "<model-id>" }
+    }
+  }
+}
+```
+
+Model precedence, strongest first: per-run > provider-scoped role >
+`agentOverrides.<name>.model` > agent frontmatter model >
+`subagents.defaultModel` > parent session model. Run `/subagents-models` to see
+the live mapping. Reinstalling PAS backs up an edited installed snippet as
+`~/.pi/agent/pas-settings.snippet.json.bak` before overwriting it; that backup
+protects the snippet, not `~/.pi/agent/settings.json`. The source and dist file
+is `settings.snippet.json`; the installed copy is `pas-settings.snippet.json`.
+
+Pi offers tool allowlists but no path-scoped denies. The Lead's read-only
+boundary and the developer's prohibition on editing `.pas/**` and
+`specs/**/*.feature` are contractual, enforced by prompt and audited by QA.
+
+Sources: [behavior contract](specs/features/product/pi-runtime-target.feature),
+[ADR](docs/adr/0006-pi-runtime-target.md), [agent sources](src/agents/pi/),
+[skill sources](src/skills/pi/).
 
 ## How it works
 

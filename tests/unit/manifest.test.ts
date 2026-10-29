@@ -2,9 +2,9 @@ import { describe, expect, it } from 'bun:test';
 import { parseManifest } from '../../src/cli/lib/manifest';
 
 describe('parseManifest', () => {
-  it('should return all 9 entries from platforms.manifest', () => {
+  it('should return all 13 entries from platforms.manifest', () => {
     const entries = parseManifest();
-    expect(entries).toHaveLength(9);
+    expect(entries).toHaveLength(13);
   });
 
   it('should have correct fields for the opencode pas-toolkit plugin entry', () => {

@@ -1,5 +1,16 @@
 import { describe, expect, it, beforeAll } from 'bun:test';
-import { existsSync, readdirSync, rmSync, readFileSync } from 'fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { $ } from 'bun';
 
 const CLI_ENTRY = 'src/cli/index.ts';
@@ -82,6 +93,29 @@ describe('build command', () => {
     const built = readFileSync(builtPath);
     const source = readFileSync('src/tools/pas-toolkit.ts');
     expect(built.equals(source)).toBe(true);
+  });
+
+  it('should build the Pi pas-toolkit extension with adapter and canonical core', async () => {
+    const first = await $`bun run ${CLI_ENTRY} build --target=pi`.quiet();
+    expect(first.exitCode).toBe(0);
+
+    const indexTs = 'dist/platforms/pi/extensions/pas-toolkit/index.ts';
+    const coreTs = 'dist/platforms/pi/extensions/pas-toolkit/core.ts';
+    expect(existsSync(indexTs)).toBe(true);
+    expect(existsSync(coreTs)).toBe(true);
+
+    // The adapter is copied as-is and the canonical core is copied to core.ts.
+    expect(readFileSync(indexTs).equals(readFileSync('src/tools/pi/pas-toolkit/index.ts'))).toBe(true);
+    expect(readFileSync(coreTs).equals(readFileSync('src/tools/pas-toolkit.ts'))).toBe(true);
+
+    const firstIndex = readFileSync(indexTs);
+    const firstCore = readFileSync(coreTs);
+
+    const second = await $`bun run ${CLI_ENTRY} build --target=pi`.quiet();
+    expect(second.exitCode).toBe(0);
+
+    expect(readFileSync(indexTs).equals(firstIndex)).toBe(true);
+    expect(readFileSync(coreTs).equals(firstCore)).toBe(true);
   });
 
   it('should fail for unknown target', async () => {
@@ -361,5 +395,47 @@ describe('built prompts: project documentation contract', () => {
     expect(qaPrompt).toContain(
       'verify the matching `docs/` file was updated in the same diff',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pi target build
+// ---------------------------------------------------------------------------
+
+function snapshotTree(root: string, relative = ''): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const file of readdirSync(relative ? join(root, relative) : root)) {
+    const rel = relative ? `${relative}/${file}` : file;
+    const abs = join(root, rel);
+    const { statSync } = require('fs') as typeof import('fs');
+    if (statSync(abs).isDirectory()) {
+      Object.assign(out, snapshotTree(root, rel));
+    } else {
+      out[rel] = readFileSync(abs).toString('base64');
+    }
+  }
+  return out;
+}
+
+describe('@integration Pi build', () => {
+  it('@integration Pi build is complete and deterministic', async () => {
+    const first = await $`bun run ${CLI_ENTRY} build --target=pi`.quiet();
+    expect(first.exitCode).toBe(0);
+    const firstTree = snapshotTree('dist/platforms/pi');
+
+    const second = await $`bun run ${CLI_ENTRY} build --target=pi`.quiet();
+    expect(second.exitCode).toBe(0);
+    const secondTree = snapshotTree('dist/platforms/pi');
+
+    expect(secondTree).toEqual(firstTree);
+
+    expect(existsSync('dist/platforms/pi/agents/pas_developer.md')).toBe(true);
+    expect(existsSync('dist/platforms/pi/agents/pas_qa.md')).toBe(true);
+    expect(existsSync('dist/platforms/pi/agents/pas_researcher.md')).toBe(true);
+    expect(existsSync('dist/platforms/pi/skills/pas-lead/SKILL.md')).toBe(true);
+    expect(existsSync('dist/platforms/pi/skills/pas-turbo/SKILL.md')).toBe(true);
+    expect(existsSync('dist/platforms/pi/settings.snippet.json')).toBe(true);
+    expect(existsSync('dist/platforms/pi/extensions/pas-toolkit/index.ts')).toBe(true);
+    expect(existsSync('dist/platforms/pi/extensions/pas-toolkit/core.ts')).toBe(true);
   });
 });

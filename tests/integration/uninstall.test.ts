@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readdirSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { $ } from 'bun';
@@ -116,5 +116,97 @@ describe('uninstall command: pas-toolkit plugin', () => {
     expect(existsSync(fixturePlugin)).toBe(false);
     expect(existsSync(fixturePluginsDir)).toBe(true);
     expect(existsSync(unrelatedPlugin)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pi target uninstall
+// ---------------------------------------------------------------------------
+
+describe('@integration Pi uninstall', () => {
+  const STUB_PI = `#!/usr/bin/env bash
+set -u
+case "$1" in
+  --version) echo "pi 1.0.0"; exit 0 ;;
+  list) echo "Installed packages:"; exit 0 ;;
+  install) echo "installed $2"; exit 0 ;;
+esac
+exit 0
+`;
+
+  it('@integration Uninstall removes only Pi artifacts', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'pas-pi-uninstall-'));
+    const home = join(root, 'home');
+    const bin = join(root, 'bin');
+    mkdirSync(home, { recursive: true });
+    mkdirSync(bin, { recursive: true });
+    const stub = join(bin, 'pi');
+    writeFileSync(stub, STUB_PI);
+    chmodSync(stub, 0o755);
+
+    try {
+      const install = await $`bun run ${CLI_ENTRY} install --target=pi`
+        .env({ HOME: home, PATH: `${bin}:${process.env.PATH ?? ''}`, PI_LOG: join(root, 'pi.log') })
+        .quiet();
+      expect(install.exitCode).toBe(0);
+
+      const installedAgent = join(home, '.pi/agent/agents/pas_developer.md');
+      expect(existsSync(installedAgent)).toBe(true);
+
+      // An unrelated file in the same directory must survive uninstall.
+      const unrelated = join(home, '.pi/agent/agents/user-custom-agent.md');
+      writeFileSync(unrelated, '# custom agent\n');
+
+      const result = await $`bun run ${CLI_ENTRY} uninstall --target=pi --destdir=${home}`.quiet();
+      expect(result.exitCode).toBe(0);
+
+      expect(existsSync(installedAgent)).toBe(false);
+      expect(existsSync(join(home, '.pi/agent/agents/pas_qa.md'))).toBe(false);
+      expect(existsSync(join(home, '.pi/agent/skills/pas-lead/SKILL.md'))).toBe(false);
+      expect(existsSync(join(home, '.pi/agent/pas-settings.snippet.json'))).toBe(false);
+      expect(existsSync(join(home, '.pi/agent/extensions/pas-toolkit/index.ts'))).toBe(false);
+      expect(existsSync(unrelated)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('@integration Uninstall is idempotent on a second run', async () => {
+    const built = await $`bun run ${CLI_ENTRY} build --target=pi`.quiet();
+    expect(built.exitCode).toBe(0);
+
+    const root = mkdtempSync(join(tmpdir(), 'pas-pi-uninstall-twice-'));
+    const home = join(root, 'home');
+    const bin = join(root, 'bin');
+    mkdirSync(home, { recursive: true });
+    mkdirSync(bin, { recursive: true });
+    const stub = join(bin, 'pi');
+    writeFileSync(stub, STUB_PI);
+    chmodSync(stub, 0o755);
+
+    try {
+      const install = await $`bun run ${CLI_ENTRY} install --target=pi`
+        .env({ HOME: home, PATH: `${bin}:${process.env.PATH ?? ''}`, PI_LOG: join(root, 'pi.log') })
+        .quiet();
+      expect(install.exitCode).toBe(0);
+
+      const installedAgent = join(home, '.pi/agent/agents/pas_developer.md');
+      const unrelated = join(home, '.pi/agent/agents/user-custom-agent.md');
+      writeFileSync(unrelated, '# custom agent\n');
+
+      const first = await $`bun run ${CLI_ENTRY} uninstall --target=pi --destdir=${home}`.quiet();
+      expect(first.exitCode).toBe(0);
+      expect(first.stdout.toString()).toContain(`✓ Removed: ${installedAgent}`);
+
+      const second = await $`bun run ${CLI_ENTRY} uninstall --target=pi --destdir=${home}`.quiet();
+      expect(second.exitCode).toBe(0);
+      expect(second.stdout.toString()).toContain('Not found (skipped):');
+      expect(second.stdout.toString()).not.toContain('✓ Removed:');
+
+      expect(existsSync(installedAgent)).toBe(false);
+      expect(existsSync(unrelated)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
