@@ -1,4 +1,4 @@
-> Owner: PAS maintainers · Updated: 2026-10-26
+> Owner: PAS maintainers · Updated: 2026-10-29
 
 # Product
 
@@ -15,8 +15,15 @@ specs it points to. Vision, goals, and users are native to this doc
 Each group names its behavior contracts:
 
 - **Lead orchestration** — planning-first workflow, parallel research batches,
-  strictly sequential implementation. Contracts:
+  implementation one unit at a time by the copiloted pair. Contracts:
   `specs/features/product/lead-parallel-research.feature`.
+- **Copiloted engineer** — one delegation to a pair: a light `pas_engineer`
+  writes and self-verifies each acceptance scenario, while a runtime-enforced
+  read-only `pas_copilot` re-executes the checks, audits the code and returns
+  the terminal ack. Verification becomes a gate per unit, not a final verdict.
+  Contract: `specs/features/product/copiloted-agents.feature`. The pair ships
+  on OpenCode; Pi still ships the previous `pas_developer` + `pas_qa` roster,
+  deliberately asymmetric.
 - **Turbo mode** — optional autonomous primary, context- and risk-aware
   selective background delegation, mandatory verification and original PAS
   approval/artifact guarantees. Contract:
@@ -40,12 +47,22 @@ Each group names its behavior contracts:
 - **Project documentation** — living docs as maps, updated with the change,
   with an ADR trail. Contracts:
   `specs/features/product/project-documentation.feature`.
+- **Pi runtime target** — the same PAS workflow on Pi: native subagents and
+  skills, deterministic build and install, plugin installation from an editable
+  list, and a contractual permission boundary. Contract:
+  `specs/features/product/pi-runtime-target.feature`.
+- **Target-aware agents setup** — `pas agents setup` asks which tool to
+  configure, offers only OpenCode and Pi, and writes real per-subagent model
+  overrides with backups. Contract:
+  `specs/features/product/target-aware-agents-setup.feature`.
 
 ## Scope boundaries
 
-The MVP targets OpenCode first; multi-runtime support, NAS migration, and
-permanent daemons are out of scope. The scope boundaries are native to this doc
-(migrated from the retired PRD, 2026-10-14).
+The MVP remains OpenCode-first. Pi is a supported second runtime target
+(`docs/adr/0006-pi-runtime-target.md`), including agent model setup through
+`pas agents setup`; general multi-runtime support, NAS migration, and permanent
+daemons remain out of scope. The scope boundaries are
+native to this doc (migrated from the retired PRD, 2026-10-14).
 
 ## Who it serves
 

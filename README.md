@@ -22,14 +22,15 @@ PAS runs a serious engineering workflow without paying for a strong model in
 every role. Five properties keep it honest:
 
 - **Strong where it matters.** One strong model runs the control plane:
-  planning, approval, and adjudication. Research, implementation, and QA run on
-  light workers.
+  planning, approval, and adjudication. Research, implementation, and
+  verification run on light workers.
 - **Single-use approval gates.** No source change starts without your explicit
   approval, scoped to the task at hand; approval never authorizes later scope
   expansion.
-- **Closed contracts and mandatory QA.** Each delegation names its scope,
-  exact paths, and assigned skills. QA returns one objective `PASS`, `FAIL`,
-  or `BLOCKED` verdict, and the Lead adjudicates it.
+- **Closed contracts and a copiloted pair.** Each delegation names its scope,
+  exact paths, and assigned skills. A light engineer writes, a read-only copilot
+  re-executes the checks and returns one `PASS`, `FAIL`, or `BLOCKED` verdict,
+  and the Lead adjudicates the reconciled report.
 - **Numbered, single-writer state.** Features live in `.pas/state/NNNNN-slug/`;
   lifecycle operations go through the installed `pas_toolkit` plugin (`list`,
   `check`, `new`, `archive`), and conflicts block instead of guessing.
@@ -104,11 +105,12 @@ checkpoints, TDD, and final verification, but it handles routine research,
 implementation, and QA directly. It delegates only when scope, risk,
 independent review, or remaining context warrants it.
 
-Turbo reuses `pas_researcher`, `pas_developer`, and `pas_qa` as **optional
-background-capable workers**. Delegated development and QA are still
-sequential with respect to the actual code changes. For higher-risk changes,
-Turbo requests independent QA even when it wrote the code itself. The final
-report distinguishes `SELF` from `INDEPENDENT` verification.
+Turbo reuses `pas_researcher`, `pas_engineer`, and `pas_copilot` as **optional
+background-capable workers**. Delegated implementation uses the copiloted pair,
+one unit at a time; the engineer and read-only copilot may run concurrently
+because only one of them writes. For higher-risk changes, Turbo requests the
+independent copilot even when it wrote the code itself. The final report
+distinguishes `SELF` from `INDEPENDENT` verification.
 
 **Same engineering rigor, less coordination overhead:** when working alone,
 Turbo batches independent reads and runs non-conflicting checks in parallel.
@@ -123,8 +125,13 @@ To try Turbo without replacing the standard Lead:
 ```bash
 ./pas build --target=opencode
 ./pas install --target=opencode
-./pas agents setup              # optionally select a strong model for Pulsar Agent Turbo
+./pas agents setup              # asks which tool to configure (OpenCode or Pi)
 ```
+
+`pas agents setup` asks which tool to configure and defaults to OpenCode. Pass
+`--target=<id>` to skip that prompt; an id without a setup adapter exits
+non-zero before reading or writing any configuration. Only OpenCode and Pi have
+setup adapters, even though the manifest declares more install targets.
 
 Choose **Pulsar Agent Turbo** in OpenCode's agent selector, or set
 `"default_agent": "Pulsar Agent Turbo"` in your OpenCode config. Switch back to
@@ -143,6 +150,101 @@ Sources: [Turbo agent](src/agents/Pulsar%20Agent%20Turbo.md),
 [behavior contract](specs/features/product/turbo-mode.feature),
 [ADR](docs/adr/0005-optional-autonomous-turbo-lead.md).
 
+## Pi target (alternative runtime)
+
+Pi is a supported second runtime target
+([ADR 0006](docs/adr/0006-pi-runtime-target.md)). PAS ships native Pi subagents
+and skills rather than transforming the OpenCode prompts. Pi 1.2.0 or newer is
+required for `pi-subagents`.
+
+```bash
+./pas build --target=pi
+./pas install --target=pi            # always installs the configured plugins
+./pas install --target=pi --dry-run  # print destinations and commands only
+./pas uninstall --target=pi          # remove only files PAS installed
+```
+
+Installation preflights the `pi` binary, copies agents, skills, settings, and
+the toolkit extension under `~/.pi/agent`, then installs every source in
+[`config/pi-packages.txt`](config/pi-packages.txt) with `pi install`. Sources
+already configured per `pi list` are skipped, and the first failure aborts
+non-zero. There is no `--with-plugins` flag: plugin installation is the default
+for this target. Uninstall removes only files whose basenames exist in the
+source trees, so unrelated files in the same directory survive.
+
+Start the workflow with `/skill:pas-lead` (control plane) or `/skill:pas-turbo`
+(autonomous primary). Both skills set `disable-model-invocation: true`, so they
+load only when invoked.
+
+To configure models, run the setup wizard from the checked-out repo:
+
+```bash
+./pas agents setup --target=pi
+```
+
+Pi 1.2.0 or newer is required for `pi-subagents`. The wizard runs these steps:
+
+1. Preflights the `pi` binary. If PAS's Pi artifacts are missing, it warns and
+   points to `pas install --target=pi`; it does not install them.
+2. Compares [`config/pi-packages.txt`](config/pi-packages.txt) with `pi list`
+   and offers to install missing packages once. It never removes packages. When
+   Pi is older than 1.2.0, `pi-subagents` is skipped with a warning and the other
+   missing packages still install.
+3. Re-reads `~/.pi/agent/settings.json` after any install, then asks which
+   subagent to configure. The Pi target keeps its own roster — `pas_researcher`,
+   `pas_developer`, and `pas_qa` — because Pi intentionally does not ship the
+   OpenCode copiloted pair. Only those three are offered: the Pi leads are
+   skills, not subagents.
+4. Discovers models with `pi --list-models` and falls back to manual model-id
+   entry when the table yields no models.
+5. Offers a thinking level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`,
+   `max`) only when the chosen model reports thinking support.
+6. Writes `subagents.agentOverrides.<agent>` with `model`, `defaultProvider`,
+   and optional `thinking` in `~/.pi/agent/settings.json`. Unknown keys are
+   preserved, and the previous file is backed up as
+   `<path>.bak.<YYYYMMDDHHMMSS>` only when the content changes.
+7. Prints `Run /reload in Pi for changes to take effect.`
+
+Setup writes user scope only (`~/.pi/agent/settings.json`); it never writes a
+project `.pi/settings.json`.
+
+Workers inherit the parent model by default. The installed
+`pas-settings.snippet.json` remains a reference for manual tiering, while
+`pas agents setup --target=pi` writes the real settings for you. The snippet
+below names the **Pi roster** (`pas_developer` and `pas_qa`; OpenCode ships the
+copiloted pair instead), and placeholder model IDs must exist in your Pi
+installation:
+
+```json
+{
+  "subagents": {
+    "defaultModel": "<model-id>",
+    "agentOverrides": {
+      "pas_researcher": { "model": "<model-id>" },
+      "pas_developer": { "model": "<model-id>" },
+      "pas_qa": { "model": "<model-id>" }
+    }
+  }
+}
+```
+
+Model precedence, strongest first: per-run > provider-scoped role >
+`agentOverrides.<name>.model` > agent frontmatter model >
+`subagents.defaultModel` > parent session model. Run `/subagents-models` to see
+the live mapping. Reinstalling PAS backs up an edited installed snippet as
+`~/.pi/agent/pas-settings.snippet.json.bak` before overwriting it; that backup
+protects the snippet, not `~/.pi/agent/settings.json`. The source and dist file
+is `settings.snippet.json`; the installed copy is `pas-settings.snippet.json`.
+
+Pi offers tool allowlists but no path-scoped denies. The Lead's read-only
+boundary and the Pi developer's prohibition on editing `.pas/**` and
+`specs/**/*.feature` are contractual, enforced by prompt and audited by the Pi
+QA agent. On OpenCode, the same boundaries are runtime denials.
+
+Sources: [behavior contract](specs/features/product/pi-runtime-target.feature),
+[ADR](docs/adr/0006-pi-runtime-target.md), [agent sources](src/agents/pi/),
+[skill sources](src/skills/pi/).
+
 ## How it works
 
 Describe a feature; the Lead takes it from there:
@@ -154,10 +256,12 @@ Describe a feature; the Lead takes it from there:
    then stops at the approval boundary.
 4. **Approve** — you approve once, scoped to the plan. A changed plan needs a
    new approval.
-5. **Implement** — `pas_developer` executes one atomic task at a time,
-   with TDD.
-6. **Verify** — `pas_qa` runs the checks automatically and returns one
-   verdict; the Lead adjudicates and reports.
+5. **Implement** — one delegation spawns the pair. `pas_engineer` executes one
+   unit (one acceptance scenario) at a time with TDD and self-verifies each
+   unit.
+6. **Audit** — `pas_copilot` re-executes the checks read-only, audits the code
+   and process, and returns the terminal ack; the Lead adjudicates the
+   reconciled report and reports.
 
 ```mermaid
 flowchart TD
@@ -165,10 +269,11 @@ flowchart TD
     L -->|research| R[pas_researcher<br/>light · read-only]
     R -->|evidence| L
     L -->|plan| A{approval<br/>single-use}
-    A -->|approved| D[pas_developer<br/>light · TDD]
-    D -->|task report| L
-    L -->|verify| Q[pas_qa<br/>light · read-only]
-    Q -->|PASS / FAIL / BLOCKED| L
+    A -->|approved| D[pas_engineer<br/>light · driver · TDD]
+    A -->|approved| C[pas_copilot<br/>light · read-only peer]
+    D -->|units + evidence| Rm[(room)]
+    C -->|audit + ack| Rm
+    Rm -->|reconciled report| L
     L -->|result| U
 ```
 
@@ -177,11 +282,14 @@ flowchart TD
 | PAS Lead         | strong | Original delegated control plane                     | [`src/agents/Pulsar Agent Squad.md`](src/agents/Pulsar%20Agent%20Squad.md) |
 | Pulsar Agent Turbo      | strong | Optional self-driving primary with selective workers | [`src/agents/Pulsar Agent Turbo.md`](src/agents/Pulsar%20Agent%20Turbo.md) |
 | `pas_researcher` | light  | Read-only evidence worker                             | [`src/agents/pas_researcher.md`](src/agents/pas_researcher.md)             |
-| `pas_developer`  | light  | Bounded TDD implementer, one atomic task              | [`src/agents/pas_developer.md`](src/agents/pas_developer.md)               |
-| `pas_qa`         | light  | Read-only verifier, one verdict                       | [`src/agents/pas_qa.md`](src/agents/pas_qa.md)                             |
+| `pas_engineer`   | light  | Pair driver: bounded TDD, self-verifies each unit     | [`src/agents/pas_engineer.md`](src/agents/pas_engineer.md)                 |
+| `pas_copilot`    | light  | Read-only pair peer: re-executes and audits           | [`src/agents/pas_copilot.md`](src/agents/pas_copilot.md)                   |
 
 Permissions are per role and enforced by the runtime, not by prompt text; the
-frontmatter of each prompt is the exact profile.
+frontmatter of each prompt is the exact profile. The pair needs no special
+runtime configuration: both agents are direct children of the Lead, so no
+nested subagent depth is involved. The Pi target keeps the previous roster on
+purpose (see the Pi target section).
 
 ### Model profiles
 
@@ -196,7 +304,7 @@ equivalence across providers:
 
 | Profile | GPT-6 Luna                | DeepSeek V4.1 Flash | Typical PAS use                                                     |
 | ------- | ------------------------- | ------------------- | ------------------------------------------------------------------- |
-| Light   | `low`                     | `low`               | Default for research, implementation, and QA workers                |
+| Light   | `low`                     | `low`               | Default for research, implementation, and verification workers      |
 | Medium  | `medium`                  | `high`              | Optional escalation for broad, difficult, or high-risk worker tasks |
 | Strong  | `high`, `xhigh`, or `max` | `max`               | PAS Lead: planning, adjudication, and control-plane decisions       |
 
@@ -213,8 +321,9 @@ Contracts, not good intentions, keep the workflow predictable:
 - **Test level by contract.** Every Gherkin scenario carries exactly one class
   tag — `@unit`, `@integration`, `@contract`, `@e2e`, or `@manual` — fixing
   its lightest reliable test level. Workers escalate instead of upgrading.
-- **Background research, sequential delivery.** Independent research questions
-  run in parallel; developer and QA never run concurrently.
+- **Background research, one unit at a time.** Independent research questions
+  run in parallel; implementation runs one unit at a time, and only the engineer
+  in the pair ever writes while the copilot audits concurrently.
 - **State as a single-writer store.** `pas_toolkit` owns `list`, `check`,
   `new`, and `archive`; malformed or conflicting state blocks instead of
   guessing.

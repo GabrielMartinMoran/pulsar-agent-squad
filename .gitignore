@@ -3,6 +3,7 @@ node_modules/
 
 # PAS runtime state (created in a later phase)
 .pas/state/
+.pas/rooms/
 
 # OS
 .DS_Store

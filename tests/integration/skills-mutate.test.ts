@@ -30,8 +30,8 @@ const REPO_ROOT = join(import.meta.dir, '..', '..');
 const PAS_AGENTS = [
   'Pulsar Agent Squad',
   'pas_researcher',
-  'pas_developer',
-  'pas_qa',
+  'pas_engineer',
+  'pas_copilot',
 ];
 
 function makeTempConfigDir(): string {
@@ -189,35 +189,35 @@ describe('pas skills add — non-interactive', () => {
       '--scope',
       'agent',
       '--agent',
-       'pas_developer',
+       'pas_engineer',
     ]);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
     const after = JSON.parse(readFileSync(file, 'utf-8'));
-    expect(after.agent?.pas_developer?.permission?.skill).toEqual({ 'git-*': 'deny' });
+    expect(after.agent?.pas_engineer?.permission?.skill).toEqual({ 'git-*': 'deny' });
     // No other agent is touched.
     for (const name of PAS_AGENTS) {
-      if (name === 'pas_developer') continue;
+      if (name === 'pas_engineer') continue;
       expect(after.agent?.[name]?.permission?.skill).toBeUndefined();
     }
   });
 
   it('appends to an existing per-agent skill block (broad scope)', () => {
     writeConfigFile(tempHome, {
-       agent: { pas_developer: { permission: { skill: { '*': 'allow' } } } },
+       agent: { pas_engineer: { permission: { skill: { '*': 'allow' } } } },
     });
     const r = runPas(tempHome, ['skills', 'add', 'docs-writer', 'deny']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
     const after = JSON.parse(readFileSync(file, 'utf-8'));
-    // pas_developer keeps its existing rule AND gets the new one.
-    expect(after.agent?.pas_developer?.permission?.skill).toEqual({
+    // pas_engineer keeps its existing rule AND gets the new one.
+    expect(after.agent?.pas_engineer?.permission?.skill).toEqual({
       '*': 'allow',
       'docs-writer': 'deny',
     });
     // All other canonical agents get the new rule only.
     for (const name of PAS_AGENTS) {
-      if (name === 'pas_developer') continue;
+      if (name === 'pas_engineer') continue;
       expect(after.agent?.[name]?.permission?.skill).toEqual({ 'docs-writer': 'deny' });
     }
   });
@@ -287,23 +287,23 @@ describe('pas skills remove — non-interactive', () => {
   it('default scope (all-pas) removes the pattern from every PAS agent', () => {
     writeConfigFile(tempHome, {
       agent: {
-        pas_developer: { permission: { skill: { 'a': 'deny' } } },
-        pas_qa: { permission: { skill: { 'a': 'deny' } } },
+        pas_engineer: { permission: { skill: { 'a': 'deny' } } },
+        pas_copilot: { permission: { skill: { 'a': 'deny' } } },
       },
     });
     const r = runPas(tempHome, ['skills', 'remove', 'a']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
     const after = JSON.parse(readFileSync(file, 'utf-8'));
-    expect(after.agent?.pas_developer?.permission?.skill).toBeUndefined();
-    expect(after.agent?.pas_qa?.permission?.skill).toBeUndefined();
+    expect(after.agent?.pas_engineer?.permission?.skill).toBeUndefined();
+    expect(after.agent?.pas_copilot?.permission?.skill).toBeUndefined();
   });
 
   it('preserves top-level `permission.skill` (CLI does not manage it)', () => {
     writeConfigFile(tempHome, {
       permission: { skill: { '*': 'allow' } },
       agent: {
-        pas_developer: { permission: { skill: { 'a': 'deny' } } },
+        pas_engineer: { permission: { skill: { 'a': 'deny' } } },
       },
     });
     const r = runPas(tempHome, ['skills', 'remove', 'a']);
@@ -313,12 +313,12 @@ describe('pas skills remove — non-interactive', () => {
     // Top-level is preserved verbatim.
     expect(after.permission?.skill).toEqual({ '*': 'allow' });
     // The per-agent rule is removed.
-    expect(after.agent?.pas_developer?.permission?.skill).toBeUndefined();
+    expect(after.agent?.pas_engineer?.permission?.skill).toBeUndefined();
   });
 
   it('creates a backup before writing', () => {
     writeConfigFile(tempHome, {
-      agent: { pas_developer: { permission: { skill: { '*': 'allow' } } } },
+      agent: { pas_engineer: { permission: { skill: { '*': 'allow' } } } },
     });
     const r = runPas(tempHome, ['skills', 'remove', '*']);
     expect(r.exitCode).toBe(0);
@@ -328,18 +328,18 @@ describe('pas skills remove — non-interactive', () => {
 
   it('is a no-op (still exit 0) when the pattern does not exist', () => {
     writeConfigFile(tempHome, {
-      agent: { pas_developer: { permission: { skill: { '*': 'allow' } } } },
+      agent: { pas_engineer: { permission: { skill: { '*': 'allow' } } } },
     });
     const r = runPas(tempHome, ['skills', 'remove', 'no-such-pattern']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
     const after = JSON.parse(readFileSync(file, 'utf-8'));
-    expect(after.agent?.pas_developer?.permission?.skill).toEqual({ '*': 'allow' });
+    expect(after.agent?.pas_engineer?.permission?.skill).toEqual({ '*': 'allow' });
   });
 
   it('removes a per-agent rule', () => {
     writeConfigFile(tempHome, {
-      agent: { pas_developer: { permission: { skill: { 'a': 'deny', 'b': 'ask' } } } },
+      agent: { pas_engineer: { permission: { skill: { 'a': 'deny', 'b': 'ask' } } } },
     });
     const r = runPas(tempHome, [
       'skills',
@@ -348,17 +348,17 @@ describe('pas skills remove — non-interactive', () => {
       '--scope',
       'agent',
       '--agent',
-      'pas_developer',
+      'pas_engineer',
     ]);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
     const after = JSON.parse(readFileSync(file, 'utf-8'));
-    expect(after.agent?.pas_developer?.permission?.skill).toEqual({ b: 'ask' });
+    expect(after.agent?.pas_engineer?.permission?.skill).toEqual({ b: 'ask' });
   });
 
   it('--dry-run prints the resulting config without writing', () => {
     const file = writeConfigFile(tempHome, {
-      agent: { pas_developer: { permission: { skill: { '*': 'allow', 'docs-writer': 'deny' } } } },
+      agent: { pas_engineer: { permission: { skill: { '*': 'allow', 'docs-writer': 'deny' } } } },
     });
     const before = readFileSync(file, 'utf-8');
     const r = runPas(tempHome, ['skills', 'remove', 'docs-writer', '--dry-run']);
@@ -380,7 +380,7 @@ describe('pas skills remove — non-interactive', () => {
 
   it('rejects the old `global` scope value (bugfix renamed it to `all-pas`)', () => {
     const file = writeConfigFile(tempHome, {
-      agent: { pas_developer: { permission: { skill: { 'a': 'deny' } } } },
+      agent: { pas_engineer: { permission: { skill: { 'a': 'deny' } } } },
     });
     const before = readFileSync(file, 'utf-8');
     const r = runPas(tempHome, ['skills', 'remove', 'a', '--scope', 'global']);
@@ -395,8 +395,8 @@ describe('pas skills clear — non-interactive', () => {
     writeConfigFile(tempHome, {
       permission: { skill: { '*': 'allow' } },
       agent: {
-        pas_developer: { permission: { skill: { 'a': 'deny' } } },
-        pas_qa: { permission: { skill: { 'b': 'ask' } } },
+        pas_engineer: { permission: { skill: { 'a': 'deny' } } },
+        pas_copilot: { permission: { skill: { 'b': 'ask' } } },
       },
     });
     const r = runPas(tempHome, ['skills', 'clear']);
@@ -406,16 +406,16 @@ describe('pas skills clear — non-interactive', () => {
     // Top-level is preserved (the CLI does not manage it).
     expect(after.permission?.skill).toEqual({ '*': 'allow' });
     // Per-agent blocks are cleared.
-    expect(after.agent?.pas_developer?.permission).toBeUndefined();
-    expect(after.agent?.pas_qa?.permission).toBeUndefined();
+    expect(after.agent?.pas_engineer?.permission).toBeUndefined();
+    expect(after.agent?.pas_copilot?.permission).toBeUndefined();
   });
 
   it('clears a single per-agent scope with --scope agent --agent <name>', () => {
     writeConfigFile(tempHome, {
       permission: { skill: { '*': 'allow' } },
       agent: {
-        pas_developer: { permission: { skill: { 'a': 'deny' } } },
-        pas_qa: { permission: { skill: { 'b': 'ask' } } },
+        pas_engineer: { permission: { skill: { 'a': 'deny' } } },
+        pas_copilot: { permission: { skill: { 'b': 'ask' } } },
       },
     });
     const r = runPas(tempHome, [
@@ -424,7 +424,7 @@ describe('pas skills clear — non-interactive', () => {
       '--scope',
       'agent',
       '--agent',
-      'pas_developer',
+      'pas_engineer',
     ]);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
@@ -432,15 +432,15 @@ describe('pas skills clear — non-interactive', () => {
     // Top-level is preserved.
     expect(after.permission?.skill).toEqual({ '*': 'allow' });
     // Only the named agent is cleared.
-    expect(after.agent?.pas_developer?.permission).toBeUndefined();
-    expect(after.agent?.pas_qa?.permission?.skill).toEqual({ b: 'ask' });
+    expect(after.agent?.pas_engineer?.permission).toBeUndefined();
+    expect(after.agent?.pas_copilot?.permission?.skill).toEqual({ b: 'ask' });
   });
 
   it('clears every PAS agent per-agent block with --scope all-pas', () => {
     writeConfigFile(tempHome, {
       permission: { skill: { '*': 'allow' } },
       agent: {
-        pas_developer: {
+        pas_engineer: {
           permission: { skill: { 'docs-writer': 'deny' } },
           model: 'anthropic/claude-sonnet-4-6',
         },
@@ -453,16 +453,16 @@ describe('pas skills clear — non-interactive', () => {
     // Top-level is preserved.
     expect(after.permission?.skill).toEqual({ '*': 'allow' });
     // Per-agent block is cleared.
-    expect(after.agent?.pas_developer?.permission).toBeUndefined();
+    expect(after.agent?.pas_engineer?.permission).toBeUndefined();
     // The agent itself is kept if it had a model.
-    expect(after.agent?.pas_developer?.model).toBe('anthropic/claude-sonnet-4-6');
+    expect(after.agent?.pas_engineer?.model).toBe('anthropic/claude-sonnet-4-6');
   });
 
   it('clears all (per-agent only) with --scope all', () => {
     writeConfigFile(tempHome, {
       permission: { skill: { '*': 'allow' } },
       agent: {
-        pas_developer: {
+        pas_engineer: {
           permission: { skill: { 'docs-writer': 'deny' } },
           model: 'anthropic/claude-sonnet-4-6',
         },
@@ -474,8 +474,8 @@ describe('pas skills clear — non-interactive', () => {
     const after = JSON.parse(readFileSync(file, 'utf-8'));
     // Top-level is preserved (the CLI does not manage it).
     expect(after.permission?.skill).toEqual({ '*': 'allow' });
-    expect(after.agent?.pas_developer?.permission).toBeUndefined();
-    expect(after.agent?.pas_developer?.model).toBe('anthropic/claude-sonnet-4-6');
+    expect(after.agent?.pas_engineer?.permission).toBeUndefined();
+    expect(after.agent?.pas_engineer?.model).toBe('anthropic/claude-sonnet-4-6');
   });
 
   it('rejects the old `global` scope value (bugfix removed it for `clear`)', () => {
@@ -491,7 +491,7 @@ describe('pas skills clear — non-interactive', () => {
 
   it('creates a backup before writing', () => {
     writeConfigFile(tempHome, {
-      agent: { pas_developer: { permission: { skill: { '*': 'allow' } } } },
+      agent: { pas_engineer: { permission: { skill: { '*': 'allow' } } } },
     });
     const r = runPas(tempHome, ['skills', 'clear']);
     expect(r.exitCode).toBe(0);
@@ -501,7 +501,7 @@ describe('pas skills clear — non-interactive', () => {
 
   it('--dry-run prints the resulting config without writing', () => {
     const file = writeConfigFile(tempHome, {
-      agent: { pas_developer: { permission: { skill: { '*': 'allow' } } } },
+      agent: { pas_engineer: { permission: { skill: { '*': 'allow' } } } },
     });
     const before = readFileSync(file, 'utf-8');
     const r = runPas(tempHome, ['skills', 'clear', '--dry-run']);

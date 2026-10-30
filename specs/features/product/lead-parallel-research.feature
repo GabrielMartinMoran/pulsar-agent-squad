@@ -27,10 +27,11 @@ Feature: Lead parallel research via background subagents
     Then the Lead delegates a single researcher at a time
 
   @sequencing @guard @integration
-  Scenario: Implementation phases stay strictly sequential
+  Scenario: Implementation is one work unit at a time
     Given an approved plan enters implementation
-    Then developer and QA delegations remain one atomic task at a time
-    And no developer or QA delegation runs concurrently with another
+    Then the copiloted pair is one work unit
+    And the engineer and copilot run concurrently by design because the copilot is read-only
+    And no two sessions ever hold write access at the same time
 
   @completion-handling @integration
   Scenario: Batch completions are processed before planning

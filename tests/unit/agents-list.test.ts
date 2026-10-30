@@ -63,7 +63,7 @@ describe('buildAgentSummary — list command renderer', () => {
   it('FEAT-001 — agent with override shows configured variant and no Reasoning effort line', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
       },
     };
     const output = buildAgentSummary(config, PLAIN);
@@ -73,7 +73,7 @@ describe('buildAgentSummary — list command renderer', () => {
 
   it('should show model override with Variant default when variant is not set', () => {
     const config: OpenCodeConfig = {
-      agent: { pas_qa: { model: 'opencode/deepseek-v4-pro' } },
+      agent: { pas_copilot: { model: 'opencode/deepseek-v4-pro' } },
     };
     const output = buildAgentSummary(config, PLAIN);
     expect(output).toMatch(/Model:\s+opencode\/deepseek-v4-pro/);
@@ -85,7 +85,7 @@ describe('buildAgentSummary — list command renderer', () => {
     const config: OpenCodeConfig = {
       agent: {
         random_other_agent: { model: 'some/model' },
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6' },
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6' },
       },
     };
     const output = buildAgentSummary(config, PLAIN);
@@ -109,12 +109,12 @@ describe('buildAgentSummary — list command renderer', () => {
   it('should mark each agent with a state indicator (override ● vs default ○)', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6' },
-        pas_qa: {},
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6' },
+        pas_copilot: {},
       },
     };
     const output = buildAgentSummary(config, PLAIN);
-    // exactly one override marker (the pas_developer block)
+    // exactly one override marker (the pas_engineer block)
     expect(output.match(/●/g)?.length).toBe(1);
     // five default markers (every other NAS agent in the canonical set)
     expect(output.match(/○/g)?.length).toBe(PAS_AGENTS.length - 1);

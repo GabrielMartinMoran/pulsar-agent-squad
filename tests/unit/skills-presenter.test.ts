@@ -32,21 +32,21 @@ const PLAIN: SkillSummaryOptions = { plain: true };
 describe('formatSkillScopeCard — single-scope card view', () => {
   it('renders a per-agent scope with its rules', () => {
     const card = formatSkillScopeCard({
-      scopeLabel: 'pas_developer',
+      scopeLabel: 'pas_engineer',
       rules: [{ pattern: 'git-*', action: 'deny' }],
       colorize: false,
     });
-    expect(card).toContain('pas_developer');
+    expect(card).toContain('pas_engineer');
     expect(card).toMatch(/Pattern:\s+git-\*/);
   });
 
   it('shows a `(no rules)` placeholder for an empty scope', () => {
     const card = formatSkillScopeCard({
-      scopeLabel: 'pas_qa',
+      scopeLabel: 'pas_copilot',
       rules: [],
       colorize: false,
     });
-    expect(card).toContain('pas_qa');
+    expect(card).toContain('pas_copilot');
     expect(card).toMatch(/\(no rules\)/);
   });
 
@@ -135,14 +135,14 @@ describe('buildSkillSummary — full read-only view', () => {
   it('shows the configured per-agent rules when present', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: { permission: { skill: { 'git-*': 'deny' } } },
+        pas_engineer: { permission: { skill: { 'git-*': 'deny' } } },
       },
     };
     const out = buildSkillSummary(readSkillPolicies(config), PLAIN);
-    // The rule must appear in the pas_developer block, not anywhere else.
-    // pas_developer is followed by pas_qa, so its block ends there.
-    const devBlockStart = out.indexOf('pas_developer');
-    const nextScope = out.indexOf('pas_qa');
+    // The rule must appear in the pas_engineer block, not anywhere else.
+    // pas_engineer is followed by pas_copilot, so its block ends there.
+    const devBlockStart = out.indexOf('pas_engineer');
+    const nextScope = out.indexOf('pas_copilot');
     expect(devBlockStart).toBeGreaterThanOrEqual(0);
     expect(nextScope).toBeGreaterThan(devBlockStart);
     const devBlock = out.slice(devBlockStart, nextScope);
@@ -165,7 +165,7 @@ describe('buildSkillSummary — full read-only view', () => {
 
   it('marks scopes that have rules with an override indicator', () => {
     const config: OpenCodeConfig = {
-       agent: { pas_qa: { permission: { skill: { 'foo': 'deny' } } } },
+       agent: { pas_copilot: { permission: { skill: { 'foo': 'deny' } } } },
     };
     const out = buildSkillSummary(readSkillPolicies(config), PLAIN);
     // at least one override marker
@@ -199,7 +199,7 @@ describe('buildSkillSummary — input shape', () => {
     // intentionally ignored by the presenter (the CLI does not manage
     // top-level rules).
     const out = buildSkillSummary(
-       { global: [{ pattern: '*', action: 'allow' }], perAgent: { pas_developer: [{ pattern: 'a', action: 'deny' }] } },
+       { global: [{ pattern: '*', action: 'allow' }], perAgent: { pas_engineer: [{ pattern: 'a', action: 'deny' }] } },
       PLAIN,
     );
     // Only the per-agent rule is rendered.

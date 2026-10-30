@@ -70,20 +70,20 @@ describe('readSkillPolicies — pure parser over OpenCodeConfig', () => {
   it('parses per-agent `agent.<name>.permission.skill` rules preserving declaration order', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: {
+        pas_engineer: {
           permission: { skill: { 'git-*': 'deny', 'context7': 'ask' } },
         },
-        pas_qa: {
+        pas_copilot: {
           permission: { skill: { 'mind-*': 'allow' } },
         },
       },
     };
     const view = readSkillPolicies(config);
-    expect(view.perAgent.pas_developer).toEqual<SkillRule[]>([
+    expect(view.perAgent.pas_engineer).toEqual<SkillRule[]>([
       { pattern: 'git-*', action: 'deny' },
       { pattern: 'context7', action: 'ask' },
     ]);
-    expect(view.perAgent.pas_qa).toEqual<SkillRule[]>([
+    expect(view.perAgent.pas_copilot).toEqual<SkillRule[]>([
       { pattern: 'mind-*', action: 'allow' },
     ]);
   });
@@ -92,12 +92,12 @@ describe('readSkillPolicies — pure parser over OpenCodeConfig', () => {
     const config: OpenCodeConfig = {
       permission: { skill: { '*': 'allow' } },
       agent: {
-        pas_developer: { permission: { skill: { 'docs-*': 'deny' } } },
+        pas_engineer: { permission: { skill: { 'docs-*': 'deny' } } },
       },
     };
     const view = readSkillPolicies(config);
     expect(view.global).toEqual<SkillRule[]>([{ pattern: '*', action: 'allow' }]);
-    expect(view.perAgent.pas_developer).toEqual<SkillRule[]>([
+    expect(view.perAgent.pas_engineer).toEqual<SkillRule[]>([
       { pattern: 'docs-*', action: 'deny' },
     ]);
   });
@@ -105,29 +105,29 @@ describe('readSkillPolicies — pure parser over OpenCodeConfig', () => {
   it('skips per-agent entries with no permission block', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6' },
-        pas_qa: { permission: { skill: { 'foo': 'deny' } } },
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6' },
+        pas_copilot: { permission: { skill: { 'foo': 'deny' } } },
       },
     };
     const view = readSkillPolicies(config);
-    expect(view.perAgent.pas_developer).toBeUndefined();
-    expect(view.perAgent.pas_qa).toEqual<SkillRule[]>([{ pattern: 'foo', action: 'deny' }]);
+    expect(view.perAgent.pas_engineer).toBeUndefined();
+    expect(view.perAgent.pas_copilot).toEqual<SkillRule[]>([{ pattern: 'foo', action: 'deny' }]);
   });
 
   it('skips per-agent entries whose permission block has no `skill` block', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: { permission: { edit: { '*': 'allow' } } },
+        pas_engineer: { permission: { edit: { '*': 'allow' } } },
       },
     };
     const view = readSkillPolicies(config);
-    expect(view.perAgent.pas_developer).toBeUndefined();
+    expect(view.perAgent.pas_engineer).toBeUndefined();
   });
 
   it('does not mutate the input config', () => {
     const config: OpenCodeConfig = {
       permission: { skill: { '*': 'allow' } },
-       agent: { pas_developer: { permission: { skill: { 'a': 'deny' } } } },
+       agent: { pas_engineer: { permission: { skill: { 'a': 'deny' } } } },
     };
     const snapshot = JSON.stringify(config);
     readSkillPolicies(config);
@@ -155,21 +155,21 @@ describe('addSkillPolicy — pure mutator returning a new config', () => {
   it('`all-pas` preserves existing agent fields (model, mode, ...) when fanning out', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6', mode: 'subagent' },
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6', mode: 'subagent' },
       },
     };
     const next = addSkillPolicy(config, 'all-pas', 'git-*', 'deny');
-    expect(next.agent?.pas_developer?.model).toBe('anthropic/claude-sonnet-4-6');
-    expect(next.agent?.pas_developer?.mode).toBe('subagent');
-    expect(next.agent?.pas_developer?.permission?.skill).toEqual({ 'git-*': 'deny' });
+    expect(next.agent?.pas_engineer?.model).toBe('anthropic/claude-sonnet-4-6');
+    expect(next.agent?.pas_engineer?.mode).toBe('subagent');
+    expect(next.agent?.pas_engineer?.permission?.skill).toEqual({ 'git-*': 'deny' });
   });
 
   it('`all-pas` appends to existing per-agent `permission.skill` blocks instead of overwriting', () => {
     const config: OpenCodeConfig = {
-      agent: { pas_developer: { permission: { skill: { 'a': 'deny' } } } },
+      agent: { pas_engineer: { permission: { skill: { 'a': 'deny' } } } },
     };
     const next = addSkillPolicy(config, 'all-pas', 'b', 'ask');
-    expect(next.agent?.pas_developer?.permission?.skill).toEqual({
+    expect(next.agent?.pas_engineer?.permission?.skill).toEqual({
       a: 'deny',
       b: 'ask',
     });
@@ -186,28 +186,28 @@ describe('addSkillPolicy — pure mutator returning a new config', () => {
 
   it('adds a rule to a per-agent scope, creating the agent block when needed', () => {
     const config: OpenCodeConfig = {};
-    const next = addSkillPolicy(config, 'agent', 'context7', 'deny', 'pas_developer');
-    expect(next.agent?.pas_developer?.permission?.skill).toEqual({ context7: 'deny' });
+    const next = addSkillPolicy(config, 'agent', 'context7', 'deny', 'pas_engineer');
+    expect(next.agent?.pas_engineer?.permission?.skill).toEqual({ context7: 'deny' });
   });
 
   it('preserves existing agent fields (model, mode, ...) when adding a skill rule', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6', mode: 'subagent' },
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6', mode: 'subagent' },
       },
     };
-    const next = addSkillPolicy(config, 'agent', 'git-*', 'deny', 'pas_developer');
-    expect(next.agent?.pas_developer?.model).toBe('anthropic/claude-sonnet-4-6');
-    expect(next.agent?.pas_developer?.mode).toBe('subagent');
-    expect(next.agent?.pas_developer?.permission?.skill).toEqual({ 'git-*': 'deny' });
+    const next = addSkillPolicy(config, 'agent', 'git-*', 'deny', 'pas_engineer');
+    expect(next.agent?.pas_engineer?.model).toBe('anthropic/claude-sonnet-4-6');
+    expect(next.agent?.pas_engineer?.mode).toBe('subagent');
+    expect(next.agent?.pas_engineer?.permission?.skill).toEqual({ 'git-*': 'deny' });
   });
 
   it('adds a new pattern to an existing per-agent `permission.skill` block', () => {
     const config: OpenCodeConfig = {
-      agent: { pas_developer: { permission: { skill: { 'a': 'deny' } } } },
+      agent: { pas_engineer: { permission: { skill: { 'a': 'deny' } } } },
     };
-    const next = addSkillPolicy(config, 'agent', 'b', 'ask', 'pas_developer');
-    expect(next.agent?.pas_developer?.permission?.skill).toEqual({ a: 'deny', b: 'ask' });
+    const next = addSkillPolicy(config, 'agent', 'b', 'ask', 'pas_engineer');
+    expect(next.agent?.pas_engineer?.permission?.skill).toEqual({ a: 'deny', b: 'ask' });
   });
 
   it('preserves unrelated top-level config keys', () => {
@@ -258,89 +258,89 @@ describe('removeSkillPolicy — pure mutator returning a new config', () => {
   it('`all-pas` removes the pattern from every PAS agent per-agent block', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: { permission: { skill: { 'a': 'deny' } } },
-        pas_qa: { permission: { skill: { 'a': 'deny' } } },
+        pas_engineer: { permission: { skill: { 'a': 'deny' } } },
+        pas_copilot: { permission: { skill: { 'a': 'deny' } } },
       },
     };
     const next = removeSkillPolicy(config, 'all-pas', 'a');
-    expect(next.agent?.pas_developer?.permission?.skill).toBeUndefined();
-    expect(next.agent?.pas_qa?.permission?.skill).toBeUndefined();
+    expect(next.agent?.pas_engineer?.permission?.skill).toBeUndefined();
+    expect(next.agent?.pas_copilot?.permission?.skill).toBeUndefined();
   });
 
   it('`all-pas` never touches top-level `permission.skill` (legacy/manual rules are preserved)', () => {
     const config: OpenCodeConfig = {
       permission: { skill: { '*': 'allow' } },
       agent: {
-        pas_developer: { permission: { skill: { 'a': 'deny' } } },
+        pas_engineer: { permission: { skill: { 'a': 'deny' } } },
       },
     };
     const next = removeSkillPolicy(config, 'all-pas', 'a');
     // Per-agent rule is removed; top-level rule is untouched.
     expect(next.permission?.skill).toEqual({ '*': 'allow' });
-    expect(next.agent?.pas_developer?.permission?.skill).toBeUndefined();
+    expect(next.agent?.pas_engineer?.permission?.skill).toBeUndefined();
   });
 
   it('`all-pas` is a no-op when no PAS agent has the pattern', () => {
     const config: OpenCodeConfig = {
-      agent: { pas_developer: { permission: { skill: { 'a': 'deny' } } } },
+      agent: { pas_engineer: { permission: { skill: { 'a': 'deny' } } } },
     };
     const next = removeSkillPolicy(config, 'all-pas', 'does-not-exist');
-    expect(next.agent?.pas_developer?.permission?.skill).toEqual({ a: 'deny' });
+    expect(next.agent?.pas_engineer?.permission?.skill).toEqual({ a: 'deny' });
   });
 
   it('removes a per-agent pattern and leaves other rules intact', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: { permission: { skill: { 'a': 'deny', 'b': 'ask' } } },
+        pas_engineer: { permission: { skill: { 'a': 'deny', 'b': 'ask' } } },
       },
     };
-    const next = removeSkillPolicy(config, 'agent', 'a', 'pas_developer');
-    expect(next.agent?.pas_developer?.permission?.skill).toEqual({ b: 'ask' });
+    const next = removeSkillPolicy(config, 'agent', 'a', 'pas_engineer');
+    expect(next.agent?.pas_engineer?.permission?.skill).toEqual({ b: 'ask' });
   });
 
   it('cleans up the per-agent `permission` and `agent.<name>` block when emptied', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: {
+        pas_engineer: {
           permission: { skill: { 'a': 'deny' } },
           model: 'anthropic/claude-sonnet-4-6',
         },
-        pas_qa: { model: 'opencode/deepseek-v4-pro' },
+        pas_copilot: { model: 'opencode/deepseek-v4-pro' },
       },
     };
-    const next = removeSkillPolicy(config, 'agent', 'a', 'pas_developer');
-    // The pas_developer block must NOT be removed if it still has sibling fields.
+    const next = removeSkillPolicy(config, 'agent', 'a', 'pas_engineer');
+    // The pas_engineer block must NOT be removed if it still has sibling fields.
     // In this test the only remaining field is `permission` (now empty) and
     // the agent block keeps `model`, so the block stays.
-    expect(next.agent?.pas_developer?.model).toBe('anthropic/claude-sonnet-4-6');
-    expect(next.agent?.pas_developer?.permission).toBeUndefined();
-    expect(next.agent?.pas_qa?.model).toBe('opencode/deepseek-v4-pro');
+    expect(next.agent?.pas_engineer?.model).toBe('anthropic/claude-sonnet-4-6');
+    expect(next.agent?.pas_engineer?.permission).toBeUndefined();
+    expect(next.agent?.pas_copilot?.model).toBe('opencode/deepseek-v4-pro');
   });
 
   it('drops the per-agent block when the last rule is removed and no sibling fields remain', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: { permission: { skill: { 'a': 'deny' } } },
+        pas_engineer: { permission: { skill: { 'a': 'deny' } } },
       },
     };
-    const next = removeSkillPolicy(config, 'agent', 'a', 'pas_developer');
-    expect(next.agent?.pas_developer).toBeUndefined();
+    const next = removeSkillPolicy(config, 'agent', 'a', 'pas_engineer');
+    expect(next.agent?.pas_engineer).toBeUndefined();
   });
 
   it('drops the top-level `agent` block when the last per-agent entry is removed', () => {
     const config: OpenCodeConfig = {
-      agent: { pas_developer: { permission: { skill: { 'a': 'deny' } } } },
+      agent: { pas_engineer: { permission: { skill: { 'a': 'deny' } } } },
     };
-    const next = removeSkillPolicy(config, 'agent', 'a', 'pas_developer');
+    const next = removeSkillPolicy(config, 'agent', 'a', 'pas_engineer');
     expect(next.agent).toBeUndefined();
   });
 
   it('returns an unchanged config when the per-agent pattern does not exist', () => {
     const config: OpenCodeConfig = {
-      agent: { pas_developer: { permission: { skill: { 'a': 'deny' } } } },
+      agent: { pas_engineer: { permission: { skill: { 'a': 'deny' } } } },
     };
-    const next = removeSkillPolicy(config, 'agent', 'nope', 'pas_developer');
-    expect(next.agent?.pas_developer?.permission?.skill).toEqual({ a: 'deny' });
+    const next = removeSkillPolicy(config, 'agent', 'nope', 'pas_engineer');
+    expect(next.agent?.pas_engineer?.permission?.skill).toEqual({ a: 'deny' });
   });
 
   it('requires an agent name when scope is `agent`', () => {
@@ -354,11 +354,11 @@ describe('clearSkillPolicies — pure mutator returning a new config', () => {
     const config: OpenCodeConfig = {
       permission: { skill: { '*': 'allow' } },
       agent: {
-        pas_developer: {
+        pas_engineer: {
           permission: { skill: { 'a': 'deny' } },
           model: 'anthropic/claude-sonnet-4-6',
         },
-        pas_qa: {
+        pas_copilot: {
           permission: { skill: { 'b': 'ask' } },
           model: 'opencode/deepseek-v4-pro',
         },
@@ -368,18 +368,18 @@ describe('clearSkillPolicies — pure mutator returning a new config', () => {
     // Top-level is preserved (the CLI does not manage it).
     expect(next.permission?.skill).toEqual({ '*': 'allow' });
     // Per-agent blocks are cleared.
-    expect(next.agent?.pas_developer?.permission?.skill).toBeUndefined();
-    expect(next.agent?.pas_qa?.permission?.skill).toBeUndefined();
+    expect(next.agent?.pas_engineer?.permission?.skill).toBeUndefined();
+    expect(next.agent?.pas_copilot?.permission?.skill).toBeUndefined();
     // Agents are kept when they have sibling fields.
-    expect(next.agent?.pas_developer?.model).toBe('anthropic/claude-sonnet-4-6');
-    expect(next.agent?.pas_qa?.model).toBe('opencode/deepseek-v4-pro');
+    expect(next.agent?.pas_engineer?.model).toBe('anthropic/claude-sonnet-4-6');
+    expect(next.agent?.pas_copilot?.model).toBe('opencode/deepseek-v4-pro');
   });
 
   it('`all` (default for `pas skills clear`) clears per-agent blocks for every PAS agent and never touches top-level', () => {
     const config: OpenCodeConfig = {
       permission: { skill: { '*': 'allow' } },
       agent: {
-        pas_developer: {
+        pas_engineer: {
           permission: { skill: { 'a': 'deny' } },
           model: 'anthropic/claude-sonnet-4-6',
         },
@@ -389,22 +389,22 @@ describe('clearSkillPolicies — pure mutator returning a new config', () => {
     // Top-level is preserved (the CLI does not manage it).
     expect(next.permission?.skill).toEqual({ '*': 'allow' });
     // Per-agent blocks are cleared.
-    expect(next.agent?.pas_developer?.permission?.skill).toBeUndefined();
-    expect(next.agent?.pas_developer?.model).toBe('anthropic/claude-sonnet-4-6');
+    expect(next.agent?.pas_engineer?.permission?.skill).toBeUndefined();
+    expect(next.agent?.pas_engineer?.model).toBe('anthropic/claude-sonnet-4-6');
   });
 
   it('clears a single per-agent `permission.skill` block, keeping the agent entry', () => {
     const config: OpenCodeConfig = {
       agent: {
-        pas_developer: {
+        pas_engineer: {
           permission: { skill: { '*': 'allow', 'docs-writer': 'deny' } },
           model: 'anthropic/claude-sonnet-4-6',
         },
       },
     };
-    const next = clearSkillPolicies(config, 'agent', 'pas_developer');
-    expect(next.agent?.pas_developer?.model).toBe('anthropic/claude-sonnet-4-6');
-    expect(next.agent?.pas_developer?.permission?.skill).toBeUndefined();
+    const next = clearSkillPolicies(config, 'agent', 'pas_engineer');
+    expect(next.agent?.pas_engineer?.model).toBe('anthropic/claude-sonnet-4-6');
+    expect(next.agent?.pas_engineer?.permission?.skill).toBeUndefined();
   });
 
   it('returns an unchanged config when there is nothing to clear', () => {
@@ -421,7 +421,7 @@ describe('clearSkillPolicies — pure mutator returning a new config', () => {
   it('does not mutate the input config', () => {
     const config: OpenCodeConfig = {
       permission: { skill: { '*': 'allow' } },
-      agent: { pas_developer: { permission: { skill: { 'a': 'deny' } } } },
+      agent: { pas_engineer: { permission: { skill: { 'a': 'deny' } } } },
     };
     const snapshot = JSON.stringify(config);
     clearSkillPolicies(config, 'all');

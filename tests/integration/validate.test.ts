@@ -10,8 +10,8 @@ describe('validate command', () => {
     expect(result.stdout.toString()).toContain('✓ src/agents/Pulsar Agent Squad.md');
     expect(result.stdout.toString()).toContain('✓ src/agents/Pulsar Agent Turbo.md');
     expect(result.stdout.toString()).toContain('✓ src/agents/pas_researcher.md');
-    expect(result.stdout.toString()).toContain('✓ src/agents/pas_developer.md');
-    expect(result.stdout.toString()).toContain('✓ src/agents/pas_qa.md');
+    expect(result.stdout.toString()).toContain('✓ src/agents/pas_engineer.md');
+    expect(result.stdout.toString()).toContain('✓ src/agents/pas_copilot.md');
   });
 
   it('should output header "Validating centralized agent structure..."', async () => {
