@@ -84,22 +84,26 @@ interface CapturedTool {
 }
 
 async function captureTool(locationDirectory?: string): Promise<CapturedTool> {
-  let registered: CapturedTool | undefined;
+  const registered = new Map<string, CapturedTool>();
   const ctx = {
     location: locationDirectory === undefined ? undefined : { directory: locationDirectory },
+    session: {
+      get: async ({ sessionID }: { sessionID: string }) => ({ id: sessionID }),
+    },
     tool: {
       transform: async (callback: (editor: { add(tool: CapturedTool): void }) => void) => {
         callback({
           add: (tool) => {
-            registered = tool;
+            registered.set(tool.name, tool);
           },
         });
       },
     },
   };
   await pasToolkit.setup(ctx);
-  if (!registered) throw new Error('setup did not register a tool');
-  return registered;
+  const toolkit = registered.get('pas_toolkit');
+  if (!toolkit) throw new Error('setup did not register the pas_toolkit tool');
+  return toolkit;
 }
 
 afterEach(() => {

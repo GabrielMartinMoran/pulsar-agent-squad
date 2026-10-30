@@ -20,24 +20,27 @@ research, implement, and verify under closed contracts. Sources:
 The primary runtime is OpenCode; Pi is a supported second runtime target
 (`docs/adr/0006-pi-runtime-target.md`). The roster contains two selectable
 primary modes and three shared workers, each with its own prompt and permission
-profile under `src/agents/` (OpenCode) or `src/agents/pi/` (Pi). Turbo changes
-execution ownership, not the worker roster or state/approval contracts.
+profile under `src/agents/` (OpenCode) or `src/agents/pi/` (Pi). The copiloted
+pair — `pas_engineer` and `pas_copilot` — is the implementation unit: one
+delegation spawns both, and the Lead adjudicates their reconciled report. Turbo
+changes execution ownership, not the worker roster or state/approval contracts.
 
 | Agent | Model | Role | Prompt |
 |---|---|---|---|
 | PAS Lead | strong | Original control plane: plan, approve, adjudicate, persist | `src/agents/Pulsar Agent Squad.md` |
 | Pulsar Agent Turbo | strong | Optional primary: direct research/implementation/QA; selective background workers | `src/agents/Pulsar Agent Turbo.md` |
 | `pas_researcher` | light | Read-only evidence worker | `src/agents/pas_researcher.md` |
-| `pas_developer` | light | Bounded TDD implementer, one atomic task | `src/agents/pas_developer.md` |
-| `pas_qa` | light | Read-only verifier, one PASS/FAIL/BLOCKED verdict | `src/agents/pas_qa.md` |
+| `pas_engineer` | light | Driver of the copiloted pair: bounded TDD, self-verifies every unit | `src/agents/pas_engineer.md` |
+| `pas_copilot` | light | Read-only peer: audits by re-executing, reviews code, skills and UI/UX | `src/agents/pas_copilot.md` |
 
 On OpenCode, permissions are per role and enforced by the runtime, not by
 prompt text: the original Lead reads `.pas/**`, `specs/**/*.feature`, and
 `docs/**`, and edits only PAS artifacts. Turbo can read/execute/edit source and
-owns the same PAS artifacts, subject to single-use approval; the developer
-shells and writes source but never PAS artifacts;
-researcher and QA are read-only. The exact profiles are the frontmatter of each
-prompt; the Lead contract is `## Runtime permissions and capabilities`. Sources:
+owns the same PAS artifacts, subject to single-use approval. The engineer writes
+source but never `.pas/**` or Gherkin; the copilot is read-only with shell, so it
+can re-execute checks without ever editing the tree; the researcher is read-only
+without shell. The exact profiles are the frontmatter of each prompt; the Lead
+contract is `## Runtime permissions and capabilities`. Sources:
 `specs/features/product/lead-runtime-permissions.feature`,
 `specs/features/product/worker-internal-parallelism.feature`,
 `specs/features/product/turbo-mode.feature`.
@@ -46,16 +49,21 @@ Pi caveat: Pi exposes tool allowlists but no path-scoped denies, so the same rol
 boundaries are a soft, contractual boundary — prompt text plus QA audit, not a
 runtime denial. See `docs/adr/0006-pi-runtime-target.md`.
 
-The two modes share **engineering quality**, not execution ownership.
-When Turbo acts as its own developer, it follows targeted Red → Green →
-Refactor tests, then the full project suite before QA. When Turbo acts as its
-own QA, it checks the stable diff, scenarios, test-level strategy/pyramid,
-skills, lint and read-only format evidence before one objective verdict.
-Independent reads and resource-isolated checks can run concurrently inside
-Turbo; writes, TDD transitions and shared-resource operations stay ordered.
-The source contracts are `src/agents/Pulsar Agent Turbo.md`,
-`src/agents/pas_developer.md`, `src/agents/pas_qa.md`,
-`specs/features/product/turbo-mode.feature` and
+The two modes share **engineering quality**, not execution ownership. In
+delegated work the implementation unit is the pair, working **one unit at a
+time**: the engineer and copilot run concurrently by design because the copilot
+is read-only, so no two sessions ever hold write access. The engineer runs
+scoped tests after each TDD phase; the copilot runs one independent check per
+unit and the full project suite once before the ack. When Turbo acts as its own
+developer, it follows targeted Red → Green → Refactor tests, then the full
+project suite before its own verification. When Turbo acts as its own verifier,
+it checks the stable diff, scenarios, test-level strategy/pyramid, skills, lint
+and read-only format evidence before one objective verdict. Independent reads
+and resource-isolated checks can run concurrently inside Turbo; writes, TDD
+transitions and shared-resource operations stay ordered. The source contracts
+are `src/agents/Pulsar Agent Turbo.md`, `src/agents/pas_engineer.md`,
+`src/agents/pas_copilot.md`, `specs/features/product/turbo-mode.feature`,
+`specs/features/product/copiloted-agents.feature` and
 `specs/features/product/worker-internal-parallelism.feature`.
 
 ## Distribution pipeline
@@ -73,9 +81,15 @@ src/agents/pi/ + src/skills/pi/ + src/tools/pi/pas-toolkit/
   -> ./pas install --target=pi -> ~/.pi/agent/{agents,skills,extensions}/
 ```
 
-The OpenCode build injects `permission.skill` rules into agent prompts; the Pi
-build copies Pi agent sources verbatim and keeps their native `pi-subagents`
-frontmatter. The Pi toolkit extension is assembled as a thin `index.ts` adapter
+The OpenCode build ships every prompt in `src/agents/` — both primaries, the
+researcher, and the copiloted pair — and names no agent explicitly in the
+manifest. The Pi build copies `src/agents/pi/` verbatim and keeps its native
+`pi-subagents` frontmatter; that roster still ships `pas_researcher`,
+`pas_developer` and `pas_qa`, an asymmetry preserved on purpose
+(`docs/adr/0010-copiloted-engineer-and-copilot.md`). The OpenCode build injects
+`permission.skill` rules into agent prompts.
+
+The Pi toolkit extension is assembled as a thin `index.ts` adapter
 plus a byte copy of the canonical core as `core.ts`. Pi installation always
 installs the sources in `config/pi-packages.txt`; `--dry-run` previews only.
 `pas agents setup` is a separate path from distribution: it writes Pi model
@@ -86,6 +100,22 @@ Sources: `src/cli/commands/build.ts`, `src/cli/commands/install.ts`,
 `config/platforms.manifest`, `config/pi-packages.txt`. Builds are
 deterministic; the installed copy must match `dist/`. Edit `src/` and rebuild —
 never edit `dist/` or the installed copy.
+
+## Room protocol
+
+A delegation runs in a **room** under `.pas/rooms/`, keyed by the root session
+so the Lead, engineer and copilot resolve the same store without passing ids.
+The Lead opens it as **host**; the engineer joins as **driver** and the read-only
+copilot as **peer**. One unit is one acceptance scenario and moves through
+`open → evidence_pending → audited → closed`. A close needs red and green
+evidence with command, exit code and output, a peer audit entry executed by the
+peer itself, no unread messages and no open `blocking` finding; the terminal ack
+needs a green full-suite audit from the peer and a reconciled file list. An
+escalation cuts the turn and rejects close, end and ack until the host resolves
+it. The protocol is **code, not prose**: it lives in `src/tools/pas-toolkit.ts`
+and is pinned by `specs/features/product/copiloted-agents.feature`. The two
+prompts are v1 and are expected to change after a pilot; the protocol is the
+part the tests hold.
 
 ## Project bootstrap
 
@@ -149,3 +179,6 @@ Architecturally significant decisions, oldest first:
 - `docs/adr/0009-pi-settings-writes-from-setup.md` — agents setup is
   target-aware and writes Pi model overrides into the real settings with backup;
   it supersedes ADR 0008's "never merges" clause only.
+- `docs/adr/0010-copiloted-engineer-and-copilot.md` — implementation becomes a
+  pair: a writing engineer and a runtime-enforced read-only copilot, with the
+  step contract in code; Pi keeps the previous roster on purpose.

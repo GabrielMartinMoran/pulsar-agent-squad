@@ -22,6 +22,8 @@ describe('uninstall command', () => {
       'Pulsar Agent Turbo.md',
       'pas_researcher.md',
       'pas_developer.md',
+      'pas_engineer.md',
+      'pas_copilot.md',
       'pas_qa.md',
     ];
     for (const agent of agents) {
@@ -43,6 +45,8 @@ describe('uninstall command', () => {
      expect(stdout).toContain('Pulsar Agent Turbo.md');
      expect(stdout).toContain('pas_researcher.md');
      expect(stdout).toContain('pas_developer.md');
+     expect(stdout).toContain('pas_engineer.md');
+     expect(stdout).toContain('pas_copilot.md');
      expect(stdout).toContain('pas_qa.md');
   });
 
@@ -78,6 +82,8 @@ describe('uninstall command: pas-toolkit plugin', () => {
       'Pulsar Agent Turbo.md',
       'pas_researcher.md',
       'pas_developer.md',
+      'pas_engineer.md',
+      'pas_copilot.md',
       'pas_qa.md',
     ]) {
       writeFileSync(join(fixtureAgentsDir, agent), agentContent);
@@ -116,6 +122,55 @@ describe('uninstall command: pas-toolkit plugin', () => {
     expect(existsSync(fixturePlugin)).toBe(false);
     expect(existsSync(fixturePluginsDir)).toBe(true);
     expect(existsSync(unrelatedPlugin)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Opencode target uninstall from a real install
+// ---------------------------------------------------------------------------
+
+describe('@integration opencode uninstall', () => {
+  it('@integration Uninstall removes every shipped agent from a real installed roster', async () => {
+    const built = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    expect(built.exitCode).toBe(0);
+
+    const root = mkdtempSync(join(tmpdir(), 'pas-opencode-uninstall-'));
+    const home = join(root, 'home');
+    const agentsDir = join(home, '.config/opencode/agents');
+    const pluginsDir = join(home, '.config/opencode/plugins');
+
+    try {
+      // Real install into an isolated HOME; never the user's ~/.config.
+      const install = await $`bun run ${CLI_ENTRY} install --target=opencode --destdir=${home}`.quiet();
+      expect(install.exitCode).toBe(0);
+      expect(existsSync(agentsDir)).toBe(true);
+
+      const shippedAgents = readdirSync(agentsDir).filter((file) => file.endsWith('.md'));
+      expect(shippedAgents).toEqual(
+        expect.arrayContaining(['pas_engineer.md', 'pas_copilot.md', 'pas_researcher.md']),
+      );
+      expect(existsSync(join(pluginsDir, 'pas-toolkit.ts'))).toBe(true);
+
+      // Simulate a machine that still holds the pre-copiloted legacy names.
+      for (const legacy of ['pas_developer.md', 'pas_qa.md']) {
+        writeFileSync(join(agentsDir, legacy), '# legacy agent\n');
+      }
+      // An unrelated user agent must survive uninstall.
+      const unrelated = join(agentsDir, 'user-custom-agent.md');
+      writeFileSync(unrelated, '# custom agent\n');
+
+      const result = await $`bun run ${CLI_ENTRY} uninstall --dest=${agentsDir} --plugins-dest=${pluginsDir}`.quiet();
+      expect(result.exitCode).toBe(0);
+
+      // No PAS agent file — shipped or legacy — may remain.
+      for (const agent of [...shippedAgents, 'pas_developer.md', 'pas_qa.md']) {
+        expect(existsSync(join(agentsDir, agent))).toBe(false);
+      }
+      expect(existsSync(join(pluginsDir, 'pas-toolkit.ts'))).toBe(false);
+      expect(existsSync(unrelated)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

@@ -1,15 +1,37 @@
 import { defineCommand } from 'citty';
 import { parseManifest } from '../lib/manifest';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'fs';
 import { dirname, join } from 'path';
 import { installPiPackages, piAvailable } from '../lib/pi-plugins';
 import { resolveArtifactDestination } from '../lib/install-paths';
+import { stalePasAgentFiles } from '../lib/prune-installed';
 
 // Re-export the helper so existing imports from this command keep working.
 export { isPiPackageListed } from '../lib/pi-plugins';
 
 const PI_PREFLIGHT_ERROR =
   "ERROR: 'pi' binary not found on PATH. Install Pi and retry 'pas install --target=pi'.";
+
+/**
+ * The only install path PAS prunes: the OpenCode roster directory. Pi keeps
+ * its own agent names on purpose, so it is never pruned.
+ */
+const OPENCODE_AGENTS_INSTALL_PATH = '.config/opencode/agents';
+
+interface AgentsDirectory {
+  /** Built agents directory, whose files are the current roster. */
+  artifactDir: string;
+  /** Installed agents directory that receives the roster. */
+  installedDir: string;
+}
 
 /**
  * Copy a directory artifact recursively so nested skill layouts are
@@ -99,6 +121,35 @@ function copyArtifact(
   return copyFileArtifact(artifact, reported, target, dryRun, backupExisting);
 }
 
+/** Basenames of the agent files the current build ships into the roster. */
+function shippedAgentNames(artifactDir: string): string[] {
+  return readdirSync(artifactDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name);
+}
+
+/**
+ * Remove every PAS-owned agent file the current roster no longer ships. Files
+ * PAS does not own are never touched, and a dry run only reports candidates.
+ */
+function pruneStaleAgents(agentsDir: string, shipped: string[], dryRun: boolean): void {
+  const stale = stalePasAgentFiles(agentsDir, shipped);
+
+  if (stale.length === 0) {
+    console.log(`Nothing to prune: ${agentsDir}`);
+    return;
+  }
+
+  for (const filePath of stale) {
+    if (dryRun) {
+      console.log(`DRY-RUN: rm '${filePath}'`);
+      continue;
+    }
+    rmSync(filePath);
+    console.log(`✓ Pruned stale agent: ${filePath}`);
+  }
+}
+
 export const installCommand = defineCommand({
   meta: {
     name: 'install',
@@ -132,6 +183,7 @@ export const installCommand = defineCommand({
     }
 
     let matched = false;
+    let opencodeAgents: AgentsDirectory | undefined;
 
     for (const entry of parseManifest()) {
       if (target && entry.target !== target) continue;
@@ -152,11 +204,28 @@ export const installCommand = defineCommand({
           ? 'Installed target'
           : 'Unchanged target';
       console.log(`${action}: ${entry.target} -> ${reported}`);
+
+      if (
+        entry.target === 'opencode' &&
+        entry.kind === 'dir' &&
+        entry.installPath === OPENCODE_AGENTS_INSTALL_PATH
+      ) {
+        opencodeAgents = { artifactDir: artifact, installedDir: copyTarget };
+      }
     }
 
     if (!matched) {
       console.error(`ERROR: unknown TARGET '${target}'`);
       process.exit(1);
+    }
+
+    // Prune after the copy so the new roster is on disk before stale names go.
+    if (opencodeAgents) {
+      pruneStaleAgents(
+        opencodeAgents.installedDir,
+        shippedAgentNames(opencodeAgents.artifactDir),
+        dryRun,
+      );
     }
 
     if (isPi) {

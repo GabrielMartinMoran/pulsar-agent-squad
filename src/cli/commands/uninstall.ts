@@ -104,10 +104,15 @@ export const uninstallCommand = defineCommand({
     const dest = (args.dest as string) || join(home, '.config', 'opencode', 'agents');
     const pluginsDest = (args['plugins-dest'] as string) || join(home, '.config', 'opencode', 'plugins');
 
+    // Current roster plus the two legacy agents. Keeping the legacy names
+    // lets uninstall clean up machines that still hold a pre-copiloted
+    // install; a stale agent file would otherwise survive an upgrade.
     const agents = [
       'Pulsar Agent Squad.md',
       'Pulsar Agent Turbo.md',
       'pas_researcher.md',
+      'pas_engineer.md',
+      'pas_copilot.md',
       'pas_developer.md',
       'pas_qa.md',
     ];

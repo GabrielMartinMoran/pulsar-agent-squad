@@ -6,7 +6,7 @@ Feature: Optional autonomous Pulsar Agent Turbo execution
   Scenario: Turbo is a separately selectable installed OpenCode primary
     Given the OpenCode target is built and installed
     Then Pulsar Agent Turbo is available alongside Pulsar Agent Squad
-    And the three original PAS workers remain available
+    And the three PAS workers remain available
     And both primary agents can receive independent model and skill settings
 
   @contract
@@ -57,12 +57,12 @@ Feature: Optional autonomous Pulsar Agent Turbo execution
     Then the prompt requires a failing targeted regression test before its fix
     And it requires focused retests after implementation and refactoring
     And it avoids repeating the whole suite after each small edit
-    And it requires the full project suite before QA handoff
+    And it requires the full project suite before verification handoff
 
   @contract
   Scenario: Solo QA retains the original PAS evidence and test strategy gates
     Given the Turbo agent contract is inspected for solo QA
-    When no developer or QA worker is needed
+    When no worker is needed
     Then the prompt requires tag fidelity test-level strategy and pyramid review
     And it requires function scenario success error and edge case coverage
     And it requires actual full-suite lint and read-only format evidence
@@ -70,12 +70,13 @@ Feature: Optional autonomous Pulsar Agent Turbo execution
     And it classifies unavailable required tools or evidence as BLOCKED
 
   @contract
-  Scenario: Risk triggers independent QA despite self implementation
+  Scenario: Risk triggers independent verification despite self implementation
     Given Turbo implemented an approved security-sensitive change itself
     When direct verification finishes
-    Then Turbo delegates the stable diff to pas_qa in the background
-    And it waits for the independent verdict before adjudication
-    And it never runs QA concurrently with edits to the same tree
+    Then Turbo delegates the stable diff to the copiloted pair
+    And the copilot is read-only, so no second writer touches the tree
+    And it waits for the pair's ack and both reports before adjudication
+    And it never adjudicates on a single unreconciled version of the facts
 
   @manual
   Scenario: Runtime behavior reflects selective rather than obligatory delegation

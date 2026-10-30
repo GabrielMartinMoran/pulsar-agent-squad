@@ -12,7 +12,7 @@ Feature: Lead runtime permissions and capability routing
   Scenario: Capability boundaries are explicit
     Then the prompt states read and edit access limited to PAS artifacts in the workspace
     And it states the shell allowlist and that compound commands need every part allowlisted
-    And it states that only pas_researcher, pas_developer, and pas_qa may be launched
+    And it states that only pas_researcher, pas_engineer, and pas_copilot may be launched
 
   @permissions @guard @integration
   Scenario: A denial is policy, not an incident
@@ -24,12 +24,12 @@ Feature: Lead runtime permissions and capability routing
   Scenario: Out-of-allowlist needs are routed to workers
     Given a need outside the Lead's direct capabilities
     Then file reads and evidence gathering go to pas_researcher
-    And commands, execution, and writes go to pas_developer
-    And verification goes to pas_qa
+    And commands, execution, and writes go to pas_engineer
+    And verification goes to pas_copilot, which is read-only
 
   @permissions @workspace @integration
   Scenario: Cross-directory PAS work honors the workspace boundary
     Given a project in a directory other than the session workspace
     Then the Lead establishes the session in that directory before creating PAS artifacts
-    And as a last resort it delegates the one-time bootstrap to pas_developer
+    And as a last resort it delegates the one-time bootstrap to pas_engineer
     And it never tests a cross-directory PAS write

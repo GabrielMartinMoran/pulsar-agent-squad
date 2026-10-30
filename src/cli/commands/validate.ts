@@ -110,8 +110,8 @@ export const validateCommand = defineCommand({
       'Pulsar Agent Squad',
       'Pulsar Agent Turbo',
       'pas_researcher',
-      'pas_developer',
-      'pas_qa',
+      'pas_engineer',
+      'pas_copilot',
     ];
 
     let allOk = true;

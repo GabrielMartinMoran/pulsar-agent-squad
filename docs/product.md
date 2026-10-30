@@ -15,8 +15,15 @@ specs it points to. Vision, goals, and users are native to this doc
 Each group names its behavior contracts:
 
 - **Lead orchestration** — planning-first workflow, parallel research batches,
-  strictly sequential implementation. Contracts:
+  implementation one unit at a time by the copiloted pair. Contracts:
   `specs/features/product/lead-parallel-research.feature`.
+- **Copiloted engineer** — one delegation to a pair: a light `pas_engineer`
+  writes and self-verifies each acceptance scenario, while a runtime-enforced
+  read-only `pas_copilot` re-executes the checks, audits the code and returns
+  the terminal ack. Verification becomes a gate per unit, not a final verdict.
+  Contract: `specs/features/product/copiloted-agents.feature`. The pair ships
+  on OpenCode; Pi still ships the previous `pas_developer` + `pas_qa` roster,
+  deliberately asymmetric.
 - **Turbo mode** — optional autonomous primary, context- and risk-aware
   selective background delegation, mandatory verification and original PAS
   approval/artifact guarantees. Contract:

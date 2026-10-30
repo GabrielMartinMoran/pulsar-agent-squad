@@ -201,8 +201,8 @@ describe('buildAgentSummary — full card view over the canonical PAS agents', (
       'Pulsar Agent Squad',
       'Pulsar Agent Turbo',
       'pas_researcher',
-      'pas_developer',
-      'pas_qa',
+      'pas_engineer',
+      'pas_copilot',
     ];
     let cursor = 0;
     for (const n of names) {
@@ -223,8 +223,8 @@ describe('buildAgentSummary — full card view over the canonical PAS agents', (
     const out = buildAgentSummary(
       {
         agent: {
-          pas_developer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
-          pas_qa: { model: 'opencode/deepseek-v4-pro' },
+          pas_engineer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
+          pas_copilot: { model: 'opencode/deepseek-v4-pro' },
         },
       },
       { colorize: false },
@@ -241,7 +241,7 @@ describe('buildAgentSummary — full card view over the canonical PAS agents', (
       {
         agent: {
           random_other_agent: { model: 'some/model' },
-          pas_developer: { model: 'anthropic/claude-sonnet-4-6' },
+          pas_engineer: { model: 'anthropic/claude-sonnet-4-6' },
         },
       },
       { colorize: false },

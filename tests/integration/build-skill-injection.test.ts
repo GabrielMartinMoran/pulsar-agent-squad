@@ -28,8 +28,8 @@ let fixtureConfig = '';
 const PAS_AGENT_FILES = [
   'Pulsar Agent Squad.md',
   'Pulsar Agent Turbo.md',
-  'pas_developer.md',
-  'pas_qa.md',
+  'pas_copilot.md',
+  'pas_engineer.md',
   'pas_researcher.md',
 ];
 
@@ -67,10 +67,10 @@ function writeConfig(path: string): void {
     $schema: 'https://opencode.ai/config.json',
     default_agent: 'Pulsar Agent Squad',
     agent: {
-      pas_developer: {
+      pas_engineer: {
         permission: { skill: { 'IADEV*': 'deny', 'git-*': 'deny' } },
       },
-      pas_qa: {
+      pas_copilot: {
         permission: { skill: { 'IADEV*': 'deny' } },
       },
       pas_researcher: {
@@ -105,8 +105,8 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
       .quiet();
     expect(result.exitCode).toBe(0);
 
-    // The pas_developer dist file must have its skill block injected.
-    const devPath = 'dist/platforms/opencode/agents/pas_developer.md';
+    // The pas_engineer dist file must have its skill block injected.
+    const devPath = 'dist/platforms/opencode/agents/pas_engineer.md';
     expect(existsSync(devPath)).toBe(true);
     const devContent = readFileSync(devPath, 'utf-8');
 
@@ -154,11 +154,11 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
     expect(result.exitCode).toBe(0);
 
     const devContent = readFileSync(
-      'dist/platforms/opencode/agents/pas_developer.md',
+      'dist/platforms/opencode/agents/pas_engineer.md',
       'utf-8',
     );
     expect(devContent).not.toContain('PAS concise-work reference');
-    expect(devContent).toContain('# pas_developer');
+    expect(devContent).toContain('# pas_engineer');
   });
 
   it('places the `skill:` block AFTER `*`: allow so last-match-wins applies', async () => {
@@ -170,7 +170,7 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
       .quiet();
     expect(result.exitCode).toBe(0);
 
-    const devPath = 'dist/platforms/opencode/agents/pas_developer.md';
+    const devPath = 'dist/platforms/opencode/agents/pas_engineer.md';
     const content = readFileSync(devPath, 'utf-8');
     const lines = content.split('\n');
     const starLine = lines.findIndex((l) => l.trim() === '"*": allow');

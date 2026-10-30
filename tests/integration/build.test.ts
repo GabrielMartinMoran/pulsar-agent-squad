@@ -34,8 +34,8 @@ describe('build command', () => {
     expect(files.sort()).toEqual([
       'Pulsar Agent Squad.md',
       'Pulsar Agent Turbo.md',
-      'pas_developer.md',
-      'pas_qa.md',
+      'pas_copilot.md',
+      'pas_engineer.md',
       'pas_researcher.md',
     ]);
   });
@@ -55,22 +55,22 @@ describe('build command', () => {
     }
   });
 
-  it('should build the self-contained pas_developer.md prompt', async () => {
+  it('should build the self-contained pas_engineer.md prompt', async () => {
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
     expect(result.exitCode).toBe(0);
 
-    const devContent = readFileSync('dist/platforms/opencode/agents/pas_developer.md', 'utf-8');
-    expect(devContent).toContain('<skill_application>');
+    const devContent = readFileSync('dist/platforms/opencode/agents/pas_engineer.md', 'utf-8');
+    expect(devContent).toContain('<skills_applied>');
     expect(devContent).toContain('<test_coverage_explanation>');
     expect(devContent).not.toContain('INJECT:developer_shared');
     expect(devContent).not.toContain('PAS concise-work reference');
   });
 
-  it('should build pas_qa.md without legacy progress guidance', async () => {
+  it('should build pas_copilot.md without legacy progress guidance', async () => {
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
     expect(result.exitCode).toBe(0);
 
-    const qaContent = readFileSync('dist/platforms/opencode/agents/pas_qa.md', 'utf-8');
+    const qaContent = readFileSync('dist/platforms/opencode/agents/pas_copilot.md', 'utf-8');
     expect(qaContent).toContain('<skill_compliance>');
     expect(qaContent).toContain('<test_sufficiency>');
     expect(qaContent).not.toContain('PAS concise-work reference');
@@ -181,10 +181,13 @@ describe('built Lead prompt: parallel research contract', () => {
     expect(leadPrompt).toContain('Never claim parallel execution');
   });
 
-  it('keeps developer and QA delegations strictly sequential', () => {
+  it('keeps the pair to one work unit at a time', () => {
     expect(leadPrompt).toContain('one at a time outside the research batch');
-    expect(leadPrompt).toContain('developer and QA delegations remain strictly sequential');
-    expect(leadPrompt).toContain('one atomic task at a time');
+    expect(leadPrompt).toContain('the pair is one unit');
+    expect(leadPrompt).toContain(
+      'The engineer and copilot run concurrently by design',
+    );
+    expect(leadPrompt).toContain('no two sessions ever hold write access');
     expect(leadPrompt).not.toContain('one at a time. After');
   });
 
@@ -192,6 +195,59 @@ describe('built Lead prompt: parallel research contract', () => {
     expect(leadPrompt).toContain('Implementation plan is ready. Do you');
     expect(leadPrompt).toContain('Research Quality Gate');
     expect(leadPrompt).toContain('Planning Quality Gate');
+  });
+});
+
+describe('built Lead prompt: copiloted pair delegation contract', () => {
+  let leadPrompt = '';
+
+  beforeAll(async () => {
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    expect(result.exitCode).toBe(0);
+    leadPrompt = normalizeLeadPrompt(
+      readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
+    );
+  });
+
+  it('opens the room as host and spawns both workers in the background', () => {
+    expect(leadPrompt).toContain('open the room as');
+    expect(leadPrompt).toContain('`pas_room_open`');
+    expect(leadPrompt).toContain('the `goal`');
+    expect(leadPrompt).toContain('the `scope`');
+    expect(leadPrompt).toContain('`authorized_paths`');
+    expect(leadPrompt).toContain('`pas_engineer` (driver) and `pas_copilot` (peer, read-only)');
+    expect(leadPrompt).toContain('**background** subagents');
+    expect(leadPrompt).toContain('two separate briefs');
+    expect(leadPrompt).toContain("never the engineer's solution");
+  });
+
+  it('captures a baseline and treats the git delta as a hint', () => {
+    expect(leadPrompt).toContain('working-tree baseline');
+    expect(leadPrompt).toContain('immediately before spawning the pair');
+    expect(leadPrompt).toContain('hint to ask about, not an automatic failure');
+    expect(leadPrompt).toContain('The plugin itself never executes `git`');
+  });
+
+  it('caps a delegation at six units and names the step budget reason', () => {
+    expect(leadPrompt).toContain('at most six units');
+    expect(leadPrompt).toContain('the step budget is the reason');
+  });
+
+  it('compares the eight reconciled fields and adjudicates exceptions', () => {
+    for (const field of [
+      'authorization_check',
+      'files_changed',
+      'scenario_results',
+      'full_suite_status',
+      'skills_applied',
+      'docs_updated',
+      'escalation',
+      'verdict',
+    ]) {
+      expect(leadPrompt).toContain(field);
+    }
+    expect(leadPrompt).toContain('result of the pair\'s reconciliation');
+    expect(leadPrompt).toContain('`awaiting_ack` anomaly is a decision for you');
   });
 });
 
@@ -218,7 +274,9 @@ describe('built Lead prompt: runtime permission contract', () => {
       'single commands matching `./pas *`, `git log *`, `git diff *`, or exactly `git status`',
     );
     expect(leadPrompt).toContain('compound commands pass only when every part is allowlisted');
-    expect(leadPrompt).toContain('`subagent`: `pas_researcher`, `pas_developer`, `pas_qa`');
+    expect(leadPrompt).toContain(
+      '`subagent`: `pas_researcher`, `pas_engineer`, `pas_copilot`',
+    );
   });
 
   it('routes out-of-allowlist work to workers without re-litigating boundaries', () => {
@@ -228,7 +286,10 @@ describe('built Lead prompt: runtime permission contract', () => {
   });
 
   it('honors the workspace boundary for cross-directory PAS work', () => {
-    expect(leadPrompt).toContain('delegate the one-time `.pas/` bootstrap to `pas_developer`');
+    expect(leadPrompt).toContain(
+      'ask the user to authorize a cross-directory `.pas/` bootstrap separately',
+    );
+    expect(leadPrompt).toContain('no worker holds `.pas/**` write access');
     expect(leadPrompt).toContain('Never test a cross-directory `.pas/` write');
     expect(leadPrompt).toContain('banner concerns memory continuity, not permissions');
   });
@@ -286,10 +347,10 @@ describe('built worker prompts: internal parallelism guards', () => {
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
     expect(result.exitCode).toBe(0);
     qaPrompt = normalizeWorkerPrompt(
-      readFileSync('dist/platforms/opencode/agents/pas_qa.md', 'utf-8'),
+      readFileSync('dist/platforms/opencode/agents/pas_copilot.md', 'utf-8'),
     );
     developerPrompt = normalizeWorkerPrompt(
-      readFileSync('dist/platforms/opencode/agents/pas_developer.md', 'utf-8'),
+      readFileSync('dist/platforms/opencode/agents/pas_engineer.md', 'utf-8'),
     );
   });
 
@@ -321,10 +382,10 @@ describe('built prompts: scenario tag policy', () => {
       readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
     );
     developerPrompt = normalizeWorkerPrompt(
-      readFileSync('dist/platforms/opencode/agents/pas_developer.md', 'utf-8'),
+      readFileSync('dist/platforms/opencode/agents/pas_engineer.md', 'utf-8'),
     );
     qaPrompt = normalizeWorkerPrompt(
-      readFileSync('dist/platforms/opencode/agents/pas_qa.md', 'utf-8'),
+      readFileSync('dist/platforms/opencode/agents/pas_copilot.md', 'utf-8'),
     );
   });
 
@@ -364,10 +425,10 @@ describe('built prompts: project documentation contract', () => {
       readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
     );
     developerPrompt = normalizeWorkerPrompt(
-      readFileSync('dist/platforms/opencode/agents/pas_developer.md', 'utf-8'),
+      readFileSync('dist/platforms/opencode/agents/pas_engineer.md', 'utf-8'),
     );
     qaPrompt = normalizeWorkerPrompt(
-      readFileSync('dist/platforms/opencode/agents/pas_qa.md', 'utf-8'),
+      readFileSync('dist/platforms/opencode/agents/pas_copilot.md', 'utf-8'),
     );
   });
 
