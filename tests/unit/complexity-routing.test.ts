@@ -32,17 +32,15 @@ describe('PAS roster and Lead contract', () => {
   it('configures the Lead as primary and allows only the three PAS workers', () => {
     const frontmatter = leadPrompt.split('---')[1];
     expect(frontmatter).toContain('mode: primary');
-    expect(frontmatter).toContain('pas_toolkit: allow');
-    expect(frontmatter.match(/pas_toolkit: allow/g) ?? []).toHaveLength(1);
-    expect(frontmatter).toMatch(/"pas_researcher": allow/);
-    expect(frontmatter).toMatch(/"pas_engineer": allow/);
-    expect(frontmatter).toMatch(/"pas_copilot": allow/);
-    expect(frontmatter).not.toMatch(/"pas_developer": allow/);
-    expect(frontmatter).not.toMatch(/"pas_qa": allow/);
-    expect(frontmatter).toContain('"specs/*.feature": allow');
-    expect(frontmatter).toContain('"specs/**/*.feature": allow');
-    const readBlock = frontmatter.split('read:')[1].split('edit:')[0];
-    expect(readBlock).toContain('"docs/**": allow');
+    expect(frontmatter.match(/action: pas_toolkit/g) ?? []).toHaveLength(1);
+    expect(frontmatter).toContain('action: subagent\n    resource: "pas_researcher"\n    effect: allow');
+    expect(frontmatter).toContain('action: subagent\n    resource: "pas_engineer"\n    effect: allow');
+    expect(frontmatter).toContain('action: subagent\n    resource: "pas_copilot"\n    effect: allow');
+    expect(frontmatter).not.toContain('resource: "pas_developer"');
+    expect(frontmatter).not.toContain('resource: "pas_qa"');
+    expect(frontmatter).toContain('resource: "specs/*.feature"\n    effect: allow');
+    expect(frontmatter).toContain('resource: "specs/**/*.feature"\n    effect: allow');
+    expect(frontmatter).toContain('action: read\n    resource: "docs/**"\n    effect: allow');
     expect(frontmatter).not.toContain('planner');
     expect(frontmatter).not.toContain('developer_mini');
   });
@@ -82,14 +80,12 @@ describe('PAS worker contracts', () => {
     const engineer = readFileSync('src/agents/pas_engineer.md', 'utf-8');
     const copilot = readFileSync('src/agents/pas_copilot.md', 'utf-8');
 
-    expect(researcher).toMatch(/edit: deny/);
-    expect(researcher).toMatch(/write: deny/);
-    expect(copilot).toMatch(/edit: deny/);
-    expect(copilot).toMatch(/write: deny/);
-    expect(engineer).toMatch(/edit:\n\s+"\*": allow/);
-    expect(engineer).toContain('".pas/**": deny');
-    expect(engineer).toContain('"specs/*.feature": deny');
-    expect(engineer).toContain('"specs/**/*.feature": deny');
+    expect(researcher).toContain('action: edit\n    resource: "*"\n    effect: deny');
+    expect(copilot).toContain('action: edit\n    resource: "*"\n    effect: deny');
+    expect(engineer).toContain('action: edit\n    resource: "*"\n    effect: allow');
+    expect(engineer).toContain('resource: ".pas/**"\n    effect: deny');
+    expect(engineer).toContain('resource: "specs/*.feature"\n    effect: deny');
+    expect(engineer).toContain('resource: "specs/**/*.feature"\n    effect: deny');
     expect(engineer).toContain('one approved atomic task');
     expect(engineer).toContain('Red -> Green -> Refactor');
     expect(engineer).toContain('Skill Assignment Contract');

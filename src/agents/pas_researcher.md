@@ -2,22 +2,46 @@
 description: "PAS researcher: lightweight, read-only evidence worker for structured repository and external research."
 mode: subagent
 hidden: true
-temperature: 0.3
-permission:
-  "*": allow
-  edit: deny
-  write: deny
-  bash: deny
-  task: deny
-  question: deny
-  todowrite: deny
-  skill: allow
-  read: allow
-  glob: allow
-  grep: allow
-  list: allow
-  websearch: allow
-  webfetch: allow
+permissions:
+  - action: "*"
+    resource: "*"
+    effect: allow
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: deny
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: question
+    resource: "*"
+    effect: deny
+  - action: todowrite
+    resource: "*"
+    effect: deny
+  - action: skill
+    resource: "*"
+    effect: allow
+  - action: read
+    resource: "*"
+    effect: allow
+  - action: glob
+    resource: "*"
+    effect: allow
+  - action: grep
+    resource: "*"
+    effect: allow
+  - action: list
+    resource: "*"
+    effect: allow
+  - action: websearch
+    resource: "*"
+    effect: allow
+  - action: webfetch
+    resource: "*"
+    effect: allow
 ---
 
 # pas_researcher

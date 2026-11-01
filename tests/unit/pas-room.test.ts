@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -55,6 +55,21 @@ async function openUnit(root: string): Promise<void> {
     exit_code: 0,
     output_excerpt: '1 pass',
   });
+  await recordPeerReview(root, 'scenario one');
+}
+
+async function recordPeerReview(root: string, unit: string): Promise<void> {
+  await internals.auditUnit(root, 'lead', 'copilot', {
+    unit, command: `bun test ${unit}`, exit_code: 0, output_excerpt: '1 pass',
+    findings: [{ category: 'evidence', severity: 'info', detail: 'independent check passed' }],
+  });
+}
+
+async function requestFinalReview(root: string, unit = 'scenario one'): Promise<void> {
+  await internals.sendMessage(root, 'lead', 'engineer', {
+    unit, to: 'peer', type: 'ready_for_final_audit', body: 'tree is stable for final checks',
+  });
+  await internals.readInbox(root, 'lead', 'copilot', { wait_s: 0 });
 }
 
 describe('room roles and lifecycle', () => {
@@ -256,6 +271,241 @@ describe('close rules', () => {
   });
 });
 
+describe('host room administration', () => {
+  it('lets only the host resolve a pending escalation and records the decision', async () => {
+    const root = makeRoot();
+    await openWithPair(root);
+    await internals.escalateRoom(root, 'lead', 'copilot', {
+      action: 'fix_brief',
+      reason: 'the brief is ambiguous',
+    });
+
+    await expect(
+      internals.resolveRoomEscalation(root, 'lead', 'engineer', {
+        resolution: 'clarified the brief',
+      }),
+    ).rejects.toThrow(/only the host/);
+
+    const resolved = await internals.resolveRoomEscalation(root, 'lead', 'lead', {
+      resolution: 'clarified the brief and authorized the original scope',
+    });
+
+    expect(resolved.escalation).toBeUndefined();
+    expect(internals.transcript(root, 'lead').at(-1)).toMatchObject({
+      role: 'host',
+      type: 'escalation_resolved',
+    });
+    expect(internals.transcript(root, 'lead').at(-1)?.body).toContain(
+      'clarified the brief and authorized the original scope',
+    );
+  });
+
+  it('lets the host abort a blocked room despite a pending escalation', async () => {
+    const root = makeRoot();
+    await openWithPair(root);
+    await openUnit(root);
+    await internals.sendMessage(root, 'lead', 'copilot', {
+      to: 'driver',
+      unit: 'scenario one',
+      type: 'reply',
+      body: 'the driver has an unread peer message',
+    });
+    await internals.escalateRoom(root, 'lead', 'copilot', {
+      action: 're_delegate',
+      reason: 'the assigned worker cannot proceed',
+    });
+
+    await expect(
+      internals.abortRoom(root, 'lead', 'engineer', { reason: 'worker cannot proceed' }),
+    ).rejects.toThrow(/only the host/);
+
+    const aborted = await internals.abortRoom(root, 'lead', 'lead', {
+      reason: 'the assigned worker cannot proceed',
+    });
+
+    expect(aborted).toMatchObject({
+      status: 'aborted',
+      abort_reason: 'the assigned worker cannot proceed',
+      members: expect.arrayContaining([
+        { sessionID: 'engineer', role: 'driver' },
+        { sessionID: 'copilot', role: 'peer' },
+      ]),
+    });
+    const readStateBefore = internals
+      .roomState(root, 'lead')
+      .messages.map((message) => [...message.read_by]);
+    const inbox = await internals.readInbox(root, 'lead', 'engineer', {});
+    expect(inbox.map((message) => message.body)).toContain(
+      'the driver has an unread peer message',
+    );
+    expect(
+      internals.roomState(root, 'lead').messages.map((message) => [...message.read_by]),
+    ).toEqual(readStateBefore);
+    await expect(internals.joinRoom(root, 'lead', 'replacement', { role: 'driver' })).rejects.toThrow(
+      /aborted/,
+    );
+    await expect(
+      internals.sendMessage(root, 'lead', 'engineer', {
+        to: '*',
+        unit: 'scenario one',
+        type: 'open',
+        body: 'continue after abort',
+      }),
+    ).rejects.toThrow(/aborted/);
+  });
+
+  it('archives the old generation and retires its agents when the host resets', async () => {
+    const root = makeRoot();
+    await openWithPair(root);
+    await internals.sendMessage(root, 'lead', 'engineer', {
+      to: '*',
+      unit: 'scenario one',
+      type: 'open',
+      body: 'work from the first attempt',
+    });
+    await internals.escalateRoom(root, 'lead', 'copilot', {
+      action: 're_delegate',
+      reason: 'replace the blocked driver',
+    });
+
+    const reset = await internals.resetRoom(root, 'lead', 'lead', {
+      reason: 'spawn a fresh driver and copilot',
+    });
+    const current = internals.roomState(root, 'lead');
+    const archiveDirectory = join(root, '.pas', 'rooms', 'archive', 'lead');
+    const archives = readdirSync(archiveDirectory);
+    const archived = JSON.parse(
+      readFileSync(join(archiveDirectory, archives[0]), 'utf-8'),
+    ) as { generation: number; messages: Array<{ body: string }>; escalation?: unknown };
+
+    expect(reset.room).toMatchObject({ generation: 2, status: 'open' });
+    expect(reset.archivedPath).toContain('generation-1-');
+    expect(current).toMatchObject({
+      generation: 2,
+      goal: 'pair on the feature',
+      scope: SCOPE,
+      authorized_paths: ['src'],
+      members: [{ sessionID: 'lead', role: 'host' }],
+    });
+    expect(current.escalation).toBeUndefined();
+    expect(archived.generation).toBe(1);
+    expect(archived.escalation).toBeDefined();
+    expect(archived.messages.some((message) => message.body.includes('work from the first attempt'))).toBe(
+      true,
+    );
+    expect(archived.messages.at(-1)?.body).toContain('spawn a fresh driver and copilot');
+
+    await expect(internals.joinRoom(root, 'lead', 'engineer', { role: 'driver' })).rejects.toThrow(
+      /retired/,
+    );
+    await expect(internals.joinRoom(root, 'lead', 'copilot', { role: 'peer' })).rejects.toThrow(
+      /retired/,
+    );
+    await internals.joinRoom(root, 'lead', 'fresh-engineer', { role: 'driver' });
+    await internals.joinRoom(root, 'lead', 'fresh-copilot', { role: 'peer' });
+    await internals.resetRoom(root, 'lead', 'lead', {
+      reason: 'replace the fresh pair too',
+    });
+    await expect(internals.joinRoom(root, 'lead', 'engineer', { role: 'driver' })).rejects.toThrow(
+      /retired/,
+    );
+    await expect(
+      internals.joinRoom(root, 'lead', 'fresh-engineer', { role: 'driver' }),
+    ).rejects.toThrow(/retired/);
+  });
+
+  it('requires a host and a non-empty decision before changing room state', async () => {
+    const root = makeRoot();
+    await openWithPair(root);
+
+    await expect(
+      internals.resolveRoomEscalation(root, 'lead', 'lead', { resolution: '   ' }),
+    ).rejects.toThrow(/resolution/);
+    await expect(
+      internals.resetRoom(root, 'lead', 'engineer', { reason: 'reset from a worker' }),
+    ).rejects.toThrow(/only the host/);
+    await expect(
+      internals.abortRoom(root, 'lead', 'lead', { reason: '   ' }),
+    ).rejects.toThrow(/reason/);
+  });
+});
+
+describe('host room administration tools', () => {
+  it('registers escalation resolution, abort, and archived reset operations', async () => {
+    const root = makeRoot();
+    const tools = new Map<
+      string,
+      {
+        execute: (
+          input: unknown,
+          context?: { sessionID?: string },
+        ) => Promise<{ content: string }>;
+      }
+    >();
+    const context = {
+      location: { directory: root },
+      session: {
+        get: async ({ sessionID }: { sessionID: string }) =>
+          sessionID === 'engineer' || sessionID === 'copilot'
+            ? { id: sessionID, parentID: 'lead' }
+            : { id: sessionID },
+      },
+      tool: {
+        transform: async (callback: (editor: { add(tool: unknown): void }) => void) =>
+          callback({
+            add: (tool: unknown) => {
+              const registered = tool as {
+                name: string;
+                execute: (
+                  input: unknown,
+                  context?: { sessionID?: string },
+                ) => Promise<{ content: string }>;
+              };
+              tools.set(registered.name, registered);
+            },
+          }),
+      },
+    };
+    await pasToolkit.setup(context as never);
+    await internals.openRoom(root, 'lead', 'lead', {
+      goal: 'pair on the feature',
+      scope: SCOPE,
+      authorized_paths: ['src'],
+    });
+    await internals.joinRoom(root, 'lead', 'engineer', { role: 'driver' });
+    await internals.joinRoom(root, 'lead', 'copilot', { role: 'peer' });
+    await internals.escalateRoom(root, 'lead', 'copilot', {
+      action: 'fix_brief',
+      reason: 'the task needs a decision',
+    });
+
+    const deniedResult = await tools.get('pas_room_resolve_escalation')?.execute(
+      { resolution: 'worker attempt' },
+      { sessionID: 'engineer' },
+    );
+    expect(deniedResult?.content).toContain('only the host');
+
+    const resolveResult = await tools.get('pas_room_resolve_escalation')?.execute(
+      { resolution: 'keep the approved scope' },
+      { sessionID: 'lead' },
+    );
+    expect(resolveResult?.content).toContain('Escalation resolved.');
+
+    const abortResult = await tools.get('pas_room_abort')?.execute(
+      { reason: 'the pair cannot continue' },
+      { sessionID: 'lead' },
+    );
+    expect(abortResult?.content).toContain('Status: aborted');
+
+    const resetResult = await tools.get('pas_room_reset')?.execute(
+      { reason: 'start with fresh workers' },
+      { sessionID: 'lead' },
+    );
+    expect(resetResult?.content).toContain('Previous generation archived at');
+    expect(resetResult?.content).toContain('Generation: 2');
+  });
+});
+
 describe('room identity and storage', () => {
   it('Rooms are keyed by the root session', async () => {
     const parents: Record<string, string | undefined> = {
@@ -349,10 +599,11 @@ async function recordRedGreen(root: string, unit: string): Promise<void> {
     exit_code: 0,
     output_excerpt: '1 pass',
   });
+  await recordPeerReview(root, unit);
 }
 
 describe('step contract and evidence', () => {
-  it('Units are acceptance scenarios and open in order', async () => {
+  it('opens multiple acceptance scenarios without waiting for earlier closure', async () => {
     const root = makeRoot();
     await openRoomWithPair(root, ['one', 'two', 'three']);
 
@@ -368,21 +619,10 @@ describe('step contract and evidence', () => {
         to: '*',
         unit: 'two',
         type: 'open',
-        body: 'skip the first unit',
-      }),
-    ).rejects.toThrow(/earlier unit|scope order/);
-    expect(Object.keys(internals.roomState(root, 'lead').units)).toEqual(['one']);
-
-    await recordRedGreen(root, 'one');
-    await internals.closeUnit(root, 'lead', 'engineer', { unit: 'one', resolution: 'done' });
-    await expect(
-      internals.sendMessage(root, 'lead', 'engineer', {
-        to: '*',
-        unit: 'two',
-        type: 'open',
-        body: 'now the second unit may open',
+        body: 'open another related unit',
       }),
     ).resolves.toBeDefined();
+    expect(Object.keys(internals.roomState(root, 'lead').units)).toEqual(['one', 'two']);
   });
 
   it('A unit cannot reach green without red', async () => {
@@ -474,6 +714,7 @@ describe('step contract and evidence', () => {
       unit: 'scenario one',
       resolution: 'unit done',
     });
+    await requestFinalReview(root);
 
     await expect(
       internals.recordEvidence(root, 'lead', 'engineer', {
@@ -589,9 +830,11 @@ describe('step contract and evidence', () => {
         findings: [{ ...validFinding, detail: '   ' }],
       }),
     ).rejects.toThrow(/detail/);
-    await expect(
-      internals.auditUnit(root, 'lead', 'copilot', { unit: 'scenario one', findings: [] }),
-    ).rejects.toThrow(/finding|audit/);
+    const cleanAudit = await internals.auditUnit(root, 'lead', 'copilot', {
+      unit: 'scenario one', findings: [], command: 'bun test scenario-one',
+      exit_code: 0, output_excerpt: '1 pass',
+    });
+    expect(cleanAudit.findings).toEqual([]);
     await expect(
       internals.auditUnit(root, 'lead', 'engineer', {
         unit: 'scenario one',
@@ -618,11 +861,22 @@ describe('step contract and evidence', () => {
       { category: 'test' as const, severity: 'blocking' as const, detail: 'still failing' },
     ];
     for (let round = 0; round < internals.MAX_CORRECTION_ROUNDS; round += 1) {
+      if (round > 0) {
+        await internals.recordEvidence(root, 'lead', 'engineer', {
+          unit: 'scenario one', stage: 'refactor', command: 'bun test scenario-one',
+          exit_code: 1, output_excerpt: `correction ${round} still fails`,
+        });
+      }
       await internals.auditUnit(root, 'lead', 'copilot', {
         unit: 'scenario one',
         findings: blocking,
       });
     }
+
+    await internals.recordEvidence(root, 'lead', 'engineer', {
+      unit: 'scenario one', stage: 'refactor', command: 'bun test scenario-one',
+      exit_code: 1, output_excerpt: 'new correction still fails',
+    });
 
     await expect(
       internals.auditUnit(root, 'lead', 'copilot', {
@@ -703,6 +957,7 @@ describe('step contract and evidence', () => {
       unit: 'scenario one',
       resolution: 'unit done',
     });
+    await requestFinalReview(root);
     await internals.recordEvidence(root, 'lead', 'copilot', {
       unit: 'scenario one',
       stage: 'suite',
@@ -789,6 +1044,8 @@ describe('step contract and evidence', () => {
       /unread/,
     );
     await internals.readInbox(root, 'lead', 'engineer', {});
+
+    await requestFinalReview(root, 'scenario two');
 
     await internals.recordEvidence(root, 'lead', 'copilot', {
       unit: 'scenario two',

@@ -15,7 +15,7 @@ specs it points to. Vision, goals, and users are native to this doc
 Each group names its behavior contracts:
 
 - **Lead orchestration** — planning-first workflow, parallel research batches,
-  implementation one unit at a time by the copiloted pair. Contracts:
+  implementation by a single-writer copiloted pair. Contracts:
   `specs/features/product/lead-parallel-research.feature`.
 - **Copiloted engineer** — one delegation to a pair: a light `pas_engineer`
   writes and self-verifies each acceptance scenario, while a runtime-enforced
@@ -50,6 +50,11 @@ Each group names its behavior contracts:
 - **Pi runtime target** — the same PAS workflow on Pi: native subagents and
   skills, deterministic build and install, plugin installation from an editable
   list, and a contractual permission boundary. Contract:
+  `specs/features/product/pi-runtime-target.feature`.
+- **Install builds before copying** — `pas install` builds each selected target
+  before copying its artifacts; omitting `--target` retains the all-target
+  behavior, while `--dry-run` remains write-free and does not build. Contracts:
+  `specs/features/product/install-build-before-install.feature` and
   `specs/features/product/pi-runtime-target.feature`.
 - **Target-aware agents setup** — `pas agents setup` asks which tool to
   configure, offers only OpenCode and Pi, and writes real per-subagent model

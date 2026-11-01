@@ -5,7 +5,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from 'fs';
@@ -14,8 +13,6 @@ import { join } from 'path';
 import { $ } from 'bun';
 
 const CLI_ENTRY = 'src/cli/index.ts';
-
-const OPENCODE_AGENTS_DIST = 'dist/platforms/opencode/agents';
 
 /** The roster the current build ships to OpenCode. */
 const SHIPPED_AGENTS = [
@@ -112,16 +109,11 @@ describe('@integration opencode install pruning', () => {
     }
   });
 
-  it('@integration removes an orchestrator the roster no longer ships', async () => {
-    const retired = 'Pulsar Agent Turbo.md';
-    const retiredDist = join(OPENCODE_AGENTS_DIST, retired);
+  it('@integration removes an agent the roster no longer ships', async () => {
+    const retired = 'pas_retired_agent.md';
     const fixture = makeHomeFixture();
-    // Park the artifact outside the dist roster so install cannot copy it.
-    const parkedDist = join(fixture.root, retired);
     try {
-      // Simulate a roster that dropped one orchestrator from its shipped set.
-      renameSync(retiredDist, parkedDist);
-
+      // Seed the old installation; install rebuilds dist before copying it.
       const agentsDir = seedAgentFiles(opencodeAgentsDir(fixture.home), [retired]);
       const result = await installOpencode(fixture.home);
 
@@ -133,7 +125,6 @@ describe('@integration opencode install pruning', () => {
         [...SHIPPED_AGENTS.filter((agent) => agent !== retired)].sort(),
       );
     } finally {
-      if (existsSync(parkedDist)) renameSync(parkedDist, retiredDist);
       rmSync(fixture.root, { recursive: true, force: true });
     }
   });

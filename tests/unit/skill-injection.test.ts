@@ -31,6 +31,8 @@ import {
   findPermissionBlock,
   findStarAllowLine,
   injectSkillBlock,
+  findPermissionsBlock,
+  injectSkillRules,
 } from '../../src/cli/lib/skill-injection';
 import type { OpenCodeConfig } from '../../src/cli/lib/config-safety';
 
@@ -122,6 +124,111 @@ describe('readAgentSkillBlock', () => {
     expect(readAgentSkillBlock(config, 'pas_developer')).toEqual({
       'IADEV*': 'deny',
     });
+  });
+
+  it('reads native OpenCode V2 skill permission rules', () => {
+    const config = {
+      agents: {
+        pas_engineer: {
+          permissions: [
+            { action: '*', resource: '*', effect: 'allow' },
+            { action: 'skill', resource: 'IADEV-*', effect: 'deny' },
+            { action: 'skill', resource: 'git-*', effect: 'ask' },
+          ],
+        },
+      },
+    } as unknown as OpenCodeConfig;
+
+    expect(readAgentSkillBlock(config, 'pas_engineer')).toEqual({
+      'IADEV-*': 'deny',
+      'git-*': 'ask',
+    });
+  });
+
+  it('lets V2 skill rules override the equivalent legacy config rules', () => {
+    const config = {
+      agent: {
+        pas_engineer: {
+          permission: { skill: { 'IADEV-*': 'allow', 'git-*': 'deny' } },
+        },
+      },
+      agents: {
+        pas_engineer: {
+          permissions: [
+            { action: 'skill', resource: 'IADEV-*', effect: 'deny' },
+          ],
+        },
+      },
+    } as unknown as OpenCodeConfig;
+
+    expect(readAgentSkillBlock(config, 'pas_engineer')).toEqual({
+      'IADEV-*': 'deny',
+      'git-*': 'deny',
+    });
+  });
+});
+
+const V2_FRONTMATTER = `---
+description: "Developer agent"
+mode: subagent
+permissions:
+  - action: "*"
+    resource: "*"
+    effect: allow
+  - action: skill
+    resource: "*"
+    effect: allow
+  - action: shell
+    resource: "*"
+    effect: allow
+---
+
+# pas_engineer
+Body line.
+`;
+
+describe('findPermissionsBlock', () => {
+  it('locates the native V2 permissions sequence', () => {
+    const block = findPermissionsBlock(V2_FRONTMATTER);
+    expect(block).not.toBeNull();
+    expect(block!.permissionsLine).toBe(3);
+    expect(block!.firstChildLine).toBe(4);
+    expect(block!.lastChildLine).toBe(12);
+    expect(block!.endLine).toBe(13);
+  });
+
+  it('returns null when the frontmatter has no V2 permissions field', () => {
+    expect(findPermissionsBlock('---\ndescription: no permissions\n---\n')).toBeNull();
+  });
+});
+
+describe('injectSkillRules', () => {
+  it('replaces the generic skill rule with V2 rules at the end of the list', () => {
+    const out = injectSkillRules(V2_FRONTMATTER, {
+      'IADEV-*': 'deny',
+      'git-*': 'ask',
+    });
+    const lines = out.split('\n');
+    const skillRules = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => line.trim() === '- action: skill');
+    const shellRule = lines.findIndex((line) => line.trim() === '- action: shell');
+
+    expect(skillRules).toHaveLength(2);
+    expect(skillRules[0]!.index).toBeGreaterThan(shellRule);
+    expect(lines[skillRules[0]!.index + 1]).toBe('    resource: "IADEV-*"');
+    expect(lines[skillRules[0]!.index + 2]).toBe('    effect: deny');
+    expect(lines[skillRules[1]!.index + 1]).toBe('    resource: "git-*"');
+    expect(lines[skillRules[1]!.index + 2]).toBe('    effect: ask');
+    expect(out).not.toContain('- action: skill\n    resource: "*"');
+    expect(out).toContain('  - action: "*"\n    resource: "*"\n    effect: allow');
+    expect(out).toContain('  - action: shell\n    resource: "*"\n    effect: allow');
+  });
+
+  it('is a no-op for empty rules or a source without V2 permissions', () => {
+    expect(injectSkillRules(V2_FRONTMATTER, {})).toBe(V2_FRONTMATTER);
+    const noPermissions = '---\ndescription: no permissions\n---\n';
+    expect(injectSkillRules(noPermissions, { 'IADEV-*': 'deny' })).toBe(noPermissions);
   });
 });
 

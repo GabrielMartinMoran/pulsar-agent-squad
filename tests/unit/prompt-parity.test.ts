@@ -1,8 +1,8 @@
 /**
  * No-loss oracle for the `pas_engineer` prompt (T5).
  *
- * The engineer is a port of `pas_developer`, not a rewrite. These tests pin the
- * normative rules that must survive the port, the negative pins that stop the
+ * The engineer retains the developer safety rules, with bounded autonomy
+ * replacing blanket escalation. These tests pin the retained rules and stop the
  * merge from smuggling in capabilities or keeping rules that moved to the peer,
  * and the structural shape of the output contract.
  */
@@ -17,8 +17,8 @@ const frontmatter = prompt.split('---')[1] ?? '';
 /** Rules carried over verbatim from `pas_developer` (whitespace-normalised). */
 const PARITY_PINS = [
   'one approved atomic task',
-  'CONSERVATIVE POSTURE',
-  'When in doubt, escalate instead of guessing',
+  'BOUNDED AUTONOMY',
+  'Resolve verifiable uncertainty with permitted tools',
   'Before any edit, run this checklist',
   'Report degraded memory',
   'critical assigned skill is missing',
@@ -32,7 +32,7 @@ const PARITY_PINS = [
   'escalate (`test_strategy`) instead of',
   '`@manual` scenarios are not automated',
   'Do not delegate.',
-  'Verify authorization metadata before every edit',
+  'Verify edits against the approved objective, scope, and hard constraints',
   'Use read-only memory operations',
   'Batch independent, side-effect-free calls in one turn',
   'Keep ordered work strictly sequential',
@@ -84,14 +84,19 @@ describe('pas_engineer prompt parity', () => {
 
 describe('pas_engineer frontmatter', () => {
   it('uses the raised step budget and denies delegation', () => {
-    expect(frontmatter).toContain('steps: 120');
-    expect(frontmatter).toContain('task: deny');
+    expect(frontmatter).toContain('steps: 180');
+    expect(frontmatter).toContain('action: subagent');
+    expect(frontmatter).toContain('resource: "*"');
+    expect(frontmatter).toContain('effect: deny');
   });
 
   it('denies editing the Lead-owned plan and Gherkin files', () => {
-    expect(frontmatter).toContain('".pas/**": deny');
-    expect(frontmatter).toContain('"specs/*.feature": deny');
-    expect(frontmatter).toContain('"specs/**/*.feature": deny');
+    expect(frontmatter).toContain('action: edit');
+    expect(frontmatter).toContain('resource: ".pas/**"');
+    expect(frontmatter).toContain('resource: "specs/*.feature"');
+    expect(frontmatter).toContain('resource: "specs/**/*.feature"');
+    expect(frontmatter).not.toContain('permission:');
+    expect(frontmatter).not.toContain('temperature:');
   });
 });
 
@@ -128,7 +133,7 @@ const COPILOT_PARITY_PINS = [
   "Use the formatter's read-only validation mode",
   '`BLOCKED` with the exact command',
   '`PASS` from a model claim',
-  'Verify authorization metadata and exact scope against the actual diff',
+  'Verify the approved objective, scope, and hard constraints against the actual diff',
   'every scenario has a test',
   'non-trivial functions are covered',
   'happy and error paths are covered',
@@ -265,17 +270,21 @@ describe('pas_copilot prompt parity', () => {
 });
 
 describe('pas_copilot frontmatter', () => {
-  it('is read-only, allows bash, denies delegation, and uses the raised budget', () => {
-    expect(copilotFrontmatter).toContain('steps: 100');
-    expect(copilotFrontmatter).toContain('edit: deny');
-    expect(copilotFrontmatter).toContain('write: deny');
-    expect(copilotFrontmatter).toContain('task: deny');
-    expect(copilotFrontmatter).toContain('bash: allow');
+  it('is read-only, allows shell, denies delegation, and uses the raised budget', () => {
+    expect(copilotFrontmatter).toContain('steps: 160');
+    expect(copilotFrontmatter).toContain('action: edit');
+    expect(copilotFrontmatter).toContain('effect: deny');
+    expect(copilotFrontmatter).toContain('action: subagent');
+    expect(copilotFrontmatter).toContain('action: shell');
+    expect(copilotFrontmatter).toContain('effect: allow');
+    expect(copilotFrontmatter).not.toContain('permission:');
+    expect(copilotFrontmatter).not.toContain('temperature:');
   });
 
   it('does not smuggle a write allowance for edit', () => {
-    expect(copilotPrompt).not.toContain('edit: "*": allow');
-    expect(copilotFrontmatter).not.toMatch(/edit:\s*\n\s+"\*":\s*allow/);
+    expect(copilotFrontmatter).not.toMatch(
+      /action: edit\s+resource: "\*"\s+effect: allow/,
+    );
   });
 });
 
@@ -317,6 +326,28 @@ describe('pas_copilot report contract', () => {
     expect(copilotPrompt).toContain('re_delegate');
     expect(copilotPrompt).toContain('fix_brief');
     expect(copilotPrompt).toContain('escalate_to_user');
+  });
+});
+
+describe('OpenCode V2 agent frontmatter', () => {
+  const agentFiles = [
+    'src/agents/Pulsar Agent Squad.md',
+    'src/agents/Pulsar Agent Turbo.md',
+    'src/agents/pas_researcher.md',
+    'src/agents/pas_engineer.md',
+    'src/agents/pas_copilot.md',
+  ];
+
+  it('uses V2 permissions and removes legacy permission fields', () => {
+    for (const path of agentFiles) {
+      const content = readFileSync(path, 'utf-8');
+      const agentFrontmatter = content.split('---')[1] ?? '';
+
+      expect(agentFrontmatter).toContain('\npermissions:');
+      expect(agentFrontmatter).not.toMatch(/^permission:/m);
+      expect(agentFrontmatter).not.toMatch(/^temperature:/m);
+      expect(agentFrontmatter).not.toMatch(/^  - action: (bash|task|write)$/m);
+    }
   });
 });
 
@@ -586,4 +617,3 @@ describe('every legacy rule has a destination', () => {
     expect([...mentionedIds]).toEqual(['D50']);
   });
 });
-

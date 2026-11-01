@@ -15,10 +15,16 @@ Feature: Copiloted engineer
     And the host is excluded from the discussion
 
   @unit
-  Scenario: Units are acceptance scenarios and open in order
+  Scenario: Related acceptance scenarios can be open together
     Given a room whose scope lists three tagged scenarios
     When the engineer opens the second scenario before the first closes
-    Then the call is rejected and the first unit stays the only open one
+    Then both scenarios are open for independent review
+
+  @unit
+  Scenario: A clean independent audit needs no artificial finding
+    Given an open scenario
+    When the peer records a passing executable audit with no findings
+    Then the audit contains no findings and can support closure
 
   @unit
   Scenario: A unit cannot reach green without red
@@ -87,7 +93,7 @@ Feature: Copiloted engineer
   @unit
   Scenario: Correction rounds are bounded
     Given a unit whose third correction round ended in blocking findings
-    When the peer records another blocking finding on that unit
+    When the peer records a blocking finding against a fourth implementation revision
     Then the room refuses a fourth round
     And the only exit is an escalation
 
@@ -105,6 +111,8 @@ Feature: Copiloted engineer
     When the driver ends the room
     Then the call is rejected
     Given every unit closed and nothing unread
+    And the driver announced the stable tree ready for final audit
+    And the peer recorded a passing full-suite audit after that announcement
     When the driver ends the room
     And the peer acks within the wait window
     Then the room becomes closed

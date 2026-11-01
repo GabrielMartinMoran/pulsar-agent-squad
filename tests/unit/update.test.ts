@@ -2,7 +2,22 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { performUpdate } from '../../src/cli/commands/update';
+import { performUpdate, selectUpdateActions } from '../../src/cli/commands/update';
+
+describe('selectUpdateActions', () => {
+  it('keeps rebuild-only as build-only', () => {
+    expect(selectUpdateActions({ rebuild: true, reinstall: false })).toEqual(['build']);
+  });
+
+  it('installs by default and when reinstall is requested', () => {
+    expect(selectUpdateActions({ rebuild: false, reinstall: false })).toEqual(['install']);
+    expect(selectUpdateActions({ rebuild: false, reinstall: true })).toEqual(['install']);
+  });
+
+  it('uses one install action when rebuild and reinstall are combined', () => {
+    expect(selectUpdateActions({ rebuild: true, reinstall: true })).toEqual(['install']);
+  });
+});
 
 describe('performUpdate — preflight', () => {
   let workDir: string;

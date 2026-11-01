@@ -4,12 +4,14 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
+import { basename, dirname, extname, join } from 'path';
+import { resolveArtifactDestination } from '../../src/cli/lib/install-paths';
 import { $ } from 'bun';
 
 const CLI_ENTRY = 'src/cli/index.ts';
@@ -23,26 +25,26 @@ describe('install command', () => {
     expect(result.stdout.toString()).toContain('--destdir');
   });
 
-  it('should print DRY-RUN lines for install --target=opencode --dry-run', async () => {
-    // Build first to ensure dist exists
-    await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+  it('@integration dry run does not build missing artifacts', async () => {
+    const artifactDir = 'dist/platforms/opencode';
+    const destdir = mkdtempSync(join(tmpdir(), 'pas-install-dry-run-'));
+    const restoreDist = join(destdir, 'original-dist');
+    if (existsSync(artifactDir)) await $`mv ${artifactDir} ${restoreDist}`.quiet();
+    rmSync(artifactDir, { recursive: true, force: true });
+    try {
+      const result = await $`${process.execPath} run ${CLI_ENTRY} install --target=opencode --destdir=${destdir} --dry-run`
+        .nothrow()
+        .quiet();
 
-    const result = await $`bun run ${CLI_ENTRY} install --target=opencode --dry-run`.quiet();
-    expect(result.exitCode).toBe(0);
-    const stdout = result.stdout.toString();
-    expect(stdout).toContain('DRY-RUN');
-    expect(stdout).toContain('.config/opencode/agents');
-  });
-
-  it('should print the DRY-RUN copy line for the pas-toolkit plugin', async () => {
-    // Build first to ensure the plugin artifact exists
-    await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
-
-    const result = await $`bun run ${CLI_ENTRY} install --target=opencode --dry-run`.quiet();
-    expect(result.exitCode).toBe(0);
-    const stdout = result.stdout.toString();
-    expect(stdout).toContain('pas-toolkit.ts');
-    expect(stdout).toContain('.config/opencode/plugins');
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr.toString()).toContain('missing built artifact');
+      expect(existsSync(artifactDir)).toBe(false);
+      expect(existsSync(join(destdir, '.config/opencode'))).toBe(false);
+    } finally {
+      rmSync(artifactDir, { recursive: true, force: true });
+      if (existsSync(restoreDist)) await $`mv ${restoreDist} ${artifactDir}`.quiet();
+      rmSync(destdir, { recursive: true, force: true });
+    }
   });
 
   it('should install the plugin to a --destdir fixture byte-identical to source', async () => {
@@ -74,20 +76,83 @@ describe('install command', () => {
     expect(exitCode).not.toBe(0);
   });
 
-  it('should fail when target not built', async () => {
-    // Remove cursor dist if exists
-    const { rmSync, existsSync } = require('fs');
-    if (existsSync('dist/platforms/cursor')) {
-      rmSync('dist/platforms/cursor', { recursive: true, force: true });
+  it('@integration targeted install builds missing artifacts before copying', async () => {
+    const artifactDir = 'dist/platforms/opencode';
+    const destdir = mkdtempSync(join(tmpdir(), 'pas-install-bootstrap-'));
+    const restoreDist = join(destdir, 'original-dist');
+    if (existsSync(artifactDir)) {
+      mkdirSync(dirname(restoreDist), { recursive: true });
+      await $`mv ${artifactDir} ${restoreDist}`.quiet();
     }
-
-    let exitCode = 0;
+    rmSync(artifactDir, { recursive: true, force: true });
     try {
-      await $`bun run ${CLI_ENTRY} install --target=cursor`.quiet();
-    } catch (e: any) {
-      exitCode = e.exitCode;
+      const result = await $`${process.execPath} run ${CLI_ENTRY} install --target=opencode --destdir=${destdir}`
+        .nothrow()
+        .quiet();
+
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(artifactDir, 'agents/Pulsar Agent Squad.md'))).toBe(true);
+      expect(existsSync(join(artifactDir, 'plugins/pas-toolkit.ts'))).toBe(true);
+
+      const installedAgent = join(destdir, '.config/opencode/agents/Pulsar Agent Squad.md');
+      const installedPlugin = join(destdir, '.config/opencode/plugins/pas-toolkit.ts');
+      expect(readFileSync(installedAgent).equals(readFileSync(join(artifactDir, 'agents/Pulsar Agent Squad.md')))).toBe(true);
+      expect(readFileSync(installedPlugin).equals(readFileSync(join(artifactDir, 'plugins/pas-toolkit.ts')))).toBe(true);
+    } finally {
+      rmSync(artifactDir, { recursive: true, force: true });
+      if (existsSync(restoreDist)) await $`mv ${restoreDist} ${artifactDir}`.quiet();
+      rmSync(destdir, { recursive: true, force: true });
     }
-    expect(exitCode).not.toBe(0);
+  });
+
+  it('@integration install without a target builds every target before copying', async () => {
+    const manifest = readFileSync('config/platforms.manifest', 'utf-8');
+    const entries = manifest.split('\n')
+      .filter((line) => line.trim() && !line.trimStart().startsWith('#'))
+      .map((line) => line.split('|').map((part) => part.trim()));
+    const targets = [...new Set(entries.map(([target]) => target.trim()))];
+    const distDir = 'dist/platforms';
+    const destdir = mkdtempSync(join(tmpdir(), 'pas-install-all-targets-'));
+    const restoreDist = join(destdir, 'original-dist');
+    if (existsSync(distDir)) await $`mv ${distDir} ${restoreDist}`.quiet();
+    rmSync(distDir, { recursive: true, force: true });
+    try {
+      const result = await $`${process.execPath} run ${CLI_ENTRY} install --destdir=${destdir}`
+        .nothrow()
+        .quiet();
+
+      expect(result.exitCode).toBe(0);
+      for (const target of targets) {
+        expect(existsSync(join(distDir, target))).toBe(true);
+      }
+      for (const [target, kind, , distPath, installPath] of entries) {
+        const distArtifact = join('dist', distPath);
+        expect(existsSync(distArtifact)).toBe(true);
+        if (kind === 'dir') {
+          const destination = join(destdir, installPath);
+          expect(existsSync(destination)).toBe(true);
+          const installedEntries = readdirSync(distArtifact, { withFileTypes: true });
+          for (const artifactEntry of installedEntries) {
+            const installedPath = join(destination, artifactEntry.name);
+            expect(existsSync(installedPath)).toBe(true);
+            if (artifactEntry.isFile()) {
+              expect(readFileSync(installedPath).equals(readFileSync(join(distArtifact, artifactEntry.name)))).toBe(true);
+            }
+          }
+        } else {
+          const installedFile = resolveArtifactDestination(
+            { kind: 'file', distPath, installPath },
+            destdir,
+          ).target;
+          expect(existsSync(installedFile)).toBe(true);
+          expect(readFileSync(installedFile).equals(readFileSync(distArtifact))).toBe(true);
+        }
+      }
+    } finally {
+      rmSync(distDir, { recursive: true, force: true });
+      if (existsSync(restoreDist)) await $`mv ${restoreDist} ${distDir}`.quiet();
+      rmSync(destdir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -196,6 +261,9 @@ describe('@integration Pi install', () => {
   it('@integration Pi install requires the Pi binary', async () => {
     const fixture = makePiFixture();
     try {
+      const piDist = 'dist/platforms/pi';
+      const restoreDist = join(fixture.root, 'original-pi-dist');
+      if (existsSync(piDist)) await $`mv ${piDist} ${restoreDist}`.quiet();
       const emptyBin = join(fixture.root, 'empty-bin');
       mkdirSync(emptyBin, { recursive: true });
       const env: Record<string, string> = {
@@ -210,8 +278,14 @@ describe('@integration Pi install', () => {
 
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr.toString()).toContain('not found on PATH');
+      expect(existsSync(piDist)).toBe(false);
       expect(existsSync(join(fixture.home, '.pi/agent/agents/pas_developer.md'))).toBe(false);
+      if (existsSync(restoreDist)) await $`mv ${restoreDist} ${piDist}`.quiet();
     } finally {
+      const piDist = 'dist/platforms/pi';
+      rmSync(piDist, { recursive: true, force: true });
+      const restoreDist = join(fixture.root, 'original-pi-dist');
+      if (existsSync(restoreDist)) await $`mv ${restoreDist} ${piDist}`.quiet();
       rmSync(fixture.root, { recursive: true, force: true });
     }
   });

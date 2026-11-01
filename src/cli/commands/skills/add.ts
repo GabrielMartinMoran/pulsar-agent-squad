@@ -98,7 +98,7 @@ export default defineCommand({
          `Added ${scope === 'agent' ? `agent "${agentName}" ` : 'all PAS agents '}rule: ${pattern} → ${action}`,
       );
       console.log(
-        'Run `pas build --target=opencode && pas install --target=opencode` to propagate the rule into the dist + installed agent files, then restart OpenCode for the change to take effect at runtime.',
+        'Run `pas install --target=opencode` to rebuild and install the updated agent files, then restart OpenCode for the change to take effect at runtime.',
       );
     } catch (err) {
       fail(err instanceof Error ? err.message : String(err));

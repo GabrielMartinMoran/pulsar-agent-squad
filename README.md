@@ -106,8 +106,8 @@ implementation, and QA directly. It delegates only when scope, risk,
 independent review, or remaining context warrants it.
 
 Turbo reuses `pas_researcher`, `pas_engineer`, and `pas_copilot` as **optional
-background-capable workers**. Delegated implementation uses the copiloted pair,
-one unit at a time; the engineer and read-only copilot may run concurrently
+background-capable workers**. Delegated implementation uses the copiloted pair;
+related scenarios may be open together. The engineer and read-only copilot may run concurrently
 because only one of them writes. For higher-risk changes, Turbo requests the
 independent copilot even when it wrote the code itself. The final report
 distinguishes `SELF` from `INDEPENDENT` verification.
@@ -123,8 +123,7 @@ format validation. Missing or failing required checks cannot become a PASS.
 To try Turbo without replacing the standard Lead:
 
 ```bash
-./pas build --target=opencode
-./pas install --target=opencode
+./pas install --target=opencode  # builds and installs the selected target
 ./pas agents setup              # asks which tool to configure (OpenCode or Pi)
 ```
 
@@ -158,13 +157,12 @@ and skills rather than transforming the OpenCode prompts. Pi 1.2.0 or newer is
 required for `pi-subagents`.
 
 ```bash
-./pas build --target=pi
-./pas install --target=pi            # always installs the configured plugins
+./pas install --target=pi            # builds and installs; installs configured plugins
 ./pas install --target=pi --dry-run  # print destinations and commands only
 ./pas uninstall --target=pi          # remove only files PAS installed
 ```
 
-Installation preflights the `pi` binary, copies agents, skills, settings, and
+Installation preflights the `pi` binary, builds the Pi artifacts, copies agents, skills, settings, and
 the toolkit extension under `~/.pi/agent`, then installs every source in
 [`config/pi-packages.txt`](config/pi-packages.txt) with `pi install`. Sources
 already configured per `pi list` are skipped, and the first failure aborts
@@ -256,9 +254,8 @@ Describe a feature; the Lead takes it from there:
    then stops at the approval boundary.
 4. **Approve** — you approve once, scoped to the plan. A changed plan needs a
    new approval.
-5. **Implement** — one delegation spawns the pair. `pas_engineer` executes one
-   unit (one acceptance scenario) at a time with TDD and self-verifies each
-   unit.
+5. **Implement** — one delegation spawns the pair. `pas_engineer` uses TDD for
+   behavior changes and may work on related acceptance scenarios together.
 6. **Audit** — `pas_copilot` re-executes the checks read-only, audits the code
    and process, and returns the terminal ack; the Lead adjudicates the
    reconciled report and reports.
@@ -321,9 +318,12 @@ Contracts, not good intentions, keep the workflow predictable:
 - **Test level by contract.** Every Gherkin scenario carries exactly one class
   tag — `@unit`, `@integration`, `@contract`, `@e2e`, or `@manual` — fixing
   its lightest reliable test level. Workers escalate instead of upgrading.
-- **Background research, one unit at a time.** Independent research questions
-  run in parallel; implementation runs one unit at a time, and only the engineer
-  in the pair ever writes while the copilot audits concurrently.
+- **Background research, one writer.** Independent research questions run in
+  parallel. Related scenarios can be open together, while only the engineer
+  writes and the copilot audits ready work.
+- **Pairing as a forum.** The pair opens related topics, posts review requests
+  and evidence, and discusses escalation candidates before asking the host to
+  intervene. A passing independent final review closes the room.
 - **State as a single-writer store.** `pas_toolkit` owns `list`, `check`,
   `new`, and `archive`; malformed or conflicting state blocks instead of
   guessing.
@@ -354,8 +354,8 @@ This README is the map; these are the deeper maps:
 Stay on your current upstream branch:
 
 ```bash
-./pas update               # git pull --ff-only
-./pas update --rebuild     # pull, then build the opencode target
+./pas update               # pull, build, and install the opencode target
+./pas update --rebuild     # pull, then build without installing
 ./pas update --reinstall   # pull, then install the opencode target
 ./pas update --check       # show the plan, change nothing
 ```

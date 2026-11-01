@@ -211,7 +211,7 @@ describe('built Lead prompt: copiloted pair delegation contract', () => {
 
   it('opens the room as host and spawns both workers in the background', () => {
     expect(leadPrompt).toContain('open the room as');
-    expect(leadPrompt).toContain('`pas_room_open`');
+    expect(leadPrompt).toContain('`pas_pair_room` action `create`');
     expect(leadPrompt).toContain('the `goal`');
     expect(leadPrompt).toContain('the `scope`');
     expect(leadPrompt).toContain('`authorized_paths`');
@@ -226,6 +226,23 @@ describe('built Lead prompt: copiloted pair delegation contract', () => {
     expect(leadPrompt).toContain('immediately before spawning the pair');
     expect(leadPrompt).toContain('hint to ask about, not an automatic failure');
     expect(leadPrompt).toContain('The plugin itself never executes `git`');
+  });
+
+  it('ships the complete delegation templates without changing their content', () => {
+    const template = (text: string) => text.match(
+      /```xml\n(<delegation_contract version="1\.0">[\s\S]*?<\/delegation_contract>)\n```/,
+    )?.[1];
+    for (const name of ['Pulsar Agent Squad', 'Pulsar Agent Turbo']) {
+      const source = template(readFileSync(`src/agents/${name}.md`, 'utf-8'));
+      const built = template(readFileSync(`dist/platforms/opencode/agents/${name}.md`, 'utf-8'));
+      expect(source).toBeDefined();
+      expect(built).toBe(source);
+    }
+    for (const name of ['pas_engineer', 'pas_copilot']) {
+      const built = readFileSync(`dist/platforms/opencode/agents/${name}.md`, 'utf-8');
+      expect(built).toContain('Receive one <delegation_contract version="1.0">');
+      expect(built).not.toContain('When in doubt, escalate instead of guessing');
+    }
   });
 
   it('caps a delegation at six units and names the step budget reason', () => {
@@ -323,7 +340,7 @@ describe('built Lead prompt: state lifecycle and hygiene contract', () => {
   });
 
   it('grants the toolkit permission and archives through the tool', () => {
-    expect(leadPrompt).toContain('pas_toolkit: allow');
+    expect(leadPrompt).toContain('action: pas_toolkit resource: "*" effect: allow');
     expect(leadPrompt).toContain(
       'archive the feature state with `pas_toolkit archive`',
     );

@@ -29,9 +29,15 @@ interface UpdateOptions {
   reinstall: boolean;
 }
 
+type UpdateAction = 'build' | 'install';
+
+export function selectUpdateActions(opts: Pick<UpdateOptions, 'rebuild' | 'reinstall'>): UpdateAction[] {
+  if (opts.reinstall || !opts.rebuild) return ['install'];
+  return ['build'];
+}
+
 /**
- * `pas update` - pull the current upstream branch and (optionally) rebuild
- * and reinstall the canonical target.
+ * `pas update` - pull the current upstream branch and install the canonical target.
  *
  * Contract:
  *   - Default branch behavior: the current upstream branch
@@ -70,9 +76,11 @@ export async function performUpdate(opts: UpdateOptions): Promise<number> {
   }
 
   // 4. Plan the actions
+  const actions = selectUpdateActions(opts);
   const steps: string[] = [`git pull (current upstream branch: ${branch})`];
-  if (opts.rebuild) steps.push('pas build --target=opencode');
-  if (opts.reinstall) steps.push('pas install --target=opencode');
+  for (const action of actions) steps.push(action === 'build'
+    ? 'pas build --target=opencode'
+    : 'pas install --target=opencode');
 
   console.log('>> Plan:');
   for (const s of steps) console.log(`     - ${s}`);
@@ -88,14 +96,15 @@ export async function performUpdate(opts: UpdateOptions): Promise<number> {
   process.stdout.write(pull.stdout);
   if (pull.stderr.length > 0) process.stderr.write(pull.stderr);
 
-  // 6. Optional rebuild / reinstall — only when explicitly requested
-  if (opts.rebuild) {
-    console.log('>> pas build --target=opencode');
-    run(['bun', 'run', 'cli', 'build', '--target=opencode'], false);
-  }
-  if (opts.reinstall) {
-    console.log('>> pas install --target=opencode');
-    run(['bun', 'run', 'cli', 'install', '--target=opencode'], false);
+  // 6. Execute the same selected actions shown in the plan.
+  for (const action of actions) {
+    if (action === 'build') {
+      console.log('>> pas build --target=opencode');
+      run(['bun', 'run', 'cli', 'build', '--target=opencode'], false);
+    } else {
+      console.log('>> pas install --target=opencode');
+      run(['bun', 'run', 'cli', 'install', '--target=opencode'], false);
+    }
   }
 
   console.log('>> pas update: done.');
@@ -105,7 +114,7 @@ export async function performUpdate(opts: UpdateOptions): Promise<number> {
 export const updateCommand = defineCommand({
   meta: {
     name: 'update',
-    description: 'Pull the current upstream PAS branch (optionally rebuild and reinstall)',
+    description: 'Pull, build, and install the OpenCode target',
   },
   args: {
     check: {
@@ -114,11 +123,11 @@ export const updateCommand = defineCommand({
     },
     rebuild: {
       type: 'boolean',
-      description: 'After pulling, run `pas build --target=opencode`',
+      description: 'After pulling, build without installing',
     },
     reinstall: {
       type: 'boolean',
-      description: 'After pulling, run `pas install --target=opencode`',
+      description: 'After pulling, install (building if needed)',
     },
   },
   async run({ args }) {

@@ -68,7 +68,9 @@ for (const name of ['Pulsar Agent Squad', 'Pulsar Agent Turbo']) {
     });
 
     it('requires complete task contracts to avoid amendment churn', () => {
-      expect(flatPrompt).toContain('all paths it will touch');
+      expect(flatPrompt).toContain('authorized areas, exclusions');
+      expect(flatPrompt).toContain('Forecast files');
+      expect(flatPrompt).not.toContain('all paths it will touch');
       expect(flatPrompt).toContain('applies immediately or after restart');
       expect(flatPrompt).toContain('unwired');
     });

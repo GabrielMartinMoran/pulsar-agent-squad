@@ -46,6 +46,13 @@ export interface PermissionEntry {
   action: PermissionAction;
 }
 
+/** Native OpenCode V2 permission rule. */
+export interface OpenCodePermissionRule {
+  action: string;
+  resource: string;
+  effect: PermissionAction;
+}
+
 export interface OpenCodeConfig {
   $schema?: string;
   default_agent?: string;
@@ -60,6 +67,13 @@ export interface OpenCodeConfig {
       model?: string;
       mode?: string;
       permission?: PermissionConfig;
+      [key: string]: unknown;
+    }
+  >;
+  agents?: Record<
+    string,
+    {
+      permissions?: OpenCodePermissionRule[];
       [key: string]: unknown;
     }
   >;

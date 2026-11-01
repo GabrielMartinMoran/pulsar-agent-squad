@@ -70,8 +70,10 @@ Feature: Pi runtime target for PAS distribution
   @integration
   Scenario: Pi install requires the Pi binary
     Given no Pi binary on the path
+    And the Pi dist target is absent
     When I install the Pi target
-    Then installation fails with a clear message before copying files
+    Then installation fails with a clear message before building or copying files
+    And no Pi dist artifact or install destination file is created
 
   @integration
   Scenario: Pi install always installs the configured plugins

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["-pas-toolkit"],
+  "agents": {
+    "build": {
+      "permissions": [
+        { "action": "subagent", "resource": "pas_engineer", "effect": "allow" },
+        { "action": "subagent", "resource": "pas_copilot", "effect": "allow" }
+      ]
+    },
+    "pas_engineer": { "hidden": false },
+    "pas_copilot": { "hidden": false }
+  }
+}

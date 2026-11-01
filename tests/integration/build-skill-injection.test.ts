@@ -5,8 +5,8 @@
  * (memory: permission-skill-precedence-bug-confirmed-20260701) is
  * implemented at the BUILD step: the user's per-agent
  * `permission.skill` block in `~/.config/opencode/opencode.json` is
- * compiled INTO the dist agent's frontmatter `permission:` block,
- * placed AFTER the existing `*`: allow line.
+ * compiled into the dist agent's native V2 `permissions` list, after the
+ * existing wildcard rules.
  *
  * This test exercises the real `pas build` CLI with a fixture
  * `opencode.json` (via the `PAS_OPENCODE_CONFIG_PATH` env var) and
@@ -110,18 +110,19 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
     expect(existsSync(devPath)).toBe(true);
     const devContent = readFileSync(devPath, 'utf-8');
 
-    // Source frontmatter has `*`: allow as a child of permission.
-    expect(devContent).toMatch(/permission:\n\s+"\*": allow/);
+    // Source frontmatter uses OpenCode V2 permissions.
+    expect(devContent).toContain('permissions:\n');
+    expect(devContent).not.toContain('\npermission:\n');
 
-    // After injection, a `skill:` key sits AFTER the `*`: allow line.
-    const starIdx = devContent.indexOf('"*": allow');
-    const skillIdx = devContent.indexOf('\n  skill:');
-    expect(starIdx).toBeGreaterThan(-1);
+    // Injected skill rules follow the wildcard, so last-match-wins applies.
+    const starIdx = devContent.indexOf('  - action: "*"');
+    const skillIdx = devContent.lastIndexOf('  - action: skill');
+    expect(starIdx).toBeGreaterThanOrEqual(0);
     expect(skillIdx).toBeGreaterThan(starIdx);
 
     // The injected skill block must include the per-agent rules.
-    expect(devContent).toContain('"IADEV*": deny');
-    expect(devContent).toContain('"git-*": deny');
+    expect(devContent).toContain('resource: "IADEV*"\n    effect: deny');
+    expect(devContent).toContain('resource: "git-*"\n    effect: deny');
   });
 
   it('injects the skill block for every canonical agent that has rules in the fixture', async () => {
@@ -138,9 +139,9 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
       expect(existsSync(path)).toBe(true);
       const content = readFileSync(path, 'utf-8');
 
-      // Each canonical agent dist file should now have an `IADEV*`: deny in
-      // its `permission.skill` block.
-      expect(content).toContain('"IADEV*": deny');
+      // Each canonical agent dist file should have the configured V2 skill rule.
+      expect(content).toContain('resource: "IADEV*"\n    effect: deny');
+      expect(content).toContain('  - action: skill');
     }
   });
 
@@ -161,7 +162,7 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
     expect(devContent).toContain('# pas_engineer');
   });
 
-  it('places the `skill:` block AFTER `*`: allow so last-match-wins applies', async () => {
+  it('places skill entries after the wildcard rule so last-match-wins applies', async () => {
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`
       .env({
         ...process.env,
@@ -173,12 +174,11 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
     const devPath = 'dist/platforms/opencode/agents/pas_engineer.md';
     const content = readFileSync(devPath, 'utf-8');
     const lines = content.split('\n');
-    const starLine = lines.findIndex((l) => l.trim() === '"*": allow');
-    const skillLine = lines.findIndex((l) => l.trim() === 'skill:');
-    expect(starLine).toBeGreaterThan(0);
+    const starLine = lines.findIndex((l) => l.trim() === '- action: "*"');
+    const skillLine = lines.findIndex((l) => l.trim() === '- action: skill');
+    expect(starLine).toBeGreaterThanOrEqual(0);
     expect(skillLine).toBeGreaterThan(starLine);
-    // Skill block must be a direct sibling of `*`: allow, indented 2 spaces.
-    expect(lines[skillLine]).toBe('  skill:');
-    expect(lines[skillLine + 1].startsWith('    ')).toBe(true);
+    expect(lines[skillLine + 1]).toBe('    resource: "IADEV*"');
+    expect(lines[skillLine + 2]).toBe('    effect: deny');
   });
 });

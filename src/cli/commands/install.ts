@@ -13,6 +13,7 @@ import { dirname, join } from 'path';
 import { installPiPackages, piAvailable } from '../lib/pi-plugins';
 import { resolveArtifactDestination } from '../lib/install-paths';
 import { stalePasAgentFiles } from '../lib/prune-installed';
+import { buildTarget } from '../lib/build-target';
 
 // Re-export the helper so existing imports from this command keep working.
 export { isPiPackageListed } from '../lib/pi-plugins';
@@ -175,20 +176,32 @@ export const installCommand = defineCommand({
     const destdir = args.destdir as string | undefined;
     const isPi = target === 'pi';
 
-    // Pi preflight: fail before copying anything when the binary is absent.
-    // A dry-run previews commands and needs no Pi installation.
+    const entries = parseManifest().filter((entry) => !target || entry.target === target);
+    if (entries.length === 0) {
+      console.error(`ERROR: unknown TARGET '${target}'`);
+      process.exit(1);
+    }
+
+    // Pi preflight happens before any build or copy. A dry-run previews files
+    // and package commands without requiring a Pi installation.
     if (isPi && !dryRun && !piAvailable()) {
       console.error(PI_PREFLIGHT_ERROR);
       process.exit(1);
     }
 
-    let matched = false;
+    if (!dryRun) {
+      const targets = new Set(entries.map((entry) => entry.target));
+      for (const selectedTarget of targets) {
+        if (!buildTarget(selectedTarget)) {
+          console.error(`ERROR: unknown TARGET '${selectedTarget}'`);
+          process.exit(1);
+        }
+      }
+    }
+
     let opencodeAgents: AgentsDirectory | undefined;
 
-    for (const entry of parseManifest()) {
-      if (target && entry.target !== target) continue;
-      matched = true;
-
+    for (const entry of entries) {
       const artifact = `dist/${entry.distPath}`;
       if (!existsSync(artifact)) {
         console.error(`ERROR: missing built artifact '${artifact}'. Run 'pas build --target=${entry.target}' first.`);
@@ -212,11 +225,6 @@ export const installCommand = defineCommand({
       ) {
         opencodeAgents = { artifactDir: artifact, installedDir: copyTarget };
       }
-    }
-
-    if (!matched) {
-      console.error(`ERROR: unknown TARGET '${target}'`);
-      process.exit(1);
     }
 
     // Prune after the copy so the new roster is on disk before stale names go.
