@@ -5,8 +5,10 @@
  * `provider/model-id`). Reasoning variants are discovered separately from the
  * v2 registry endpoint `model.list`, invoked as
  * `opencode api --standalone model.list`, which returns
- * `{ location, data: Model.Info[] }` where each item carries
- * `providerID`, `modelID`, and a `variants[]` array of `{ id, ... }` entries.
+ * `{ location, data: Model.Info[] }` where each item carries `providerID`,
+ * `id` (the public model id printed by `opencode models`), `modelID` (the
+ * upstream model id, which can be shared by several public entries), and a
+ * `variants[]` array of `{ id, ... }` entries.
  */
 
 export type Model = {
@@ -21,6 +23,7 @@ type ModelListResponse = {
 
 type ModelListEntry = {
   providerID?: unknown;
+  id?: unknown;
   modelID?: unknown;
   variants?: unknown;
 };
@@ -80,6 +83,11 @@ let cachedVariants: Record<string, string[]> | null = null;
  */
 let variantsAttempted = false;
 
+/** Return a non-empty string id, or undefined for any other value. */
+function usableId(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
 /** Populate the in-memory variant registry from the v2 `model.list` endpoint. */
 export async function populateVariantsFromModelList(): Promise<void> {
   if (variantsAttempted) return;
@@ -101,9 +109,16 @@ export async function populateVariantsFromModelList(): Promise<void> {
       const entry = item as ModelListEntry;
 
       const providerID = entry.providerID;
-      const modelID = entry.modelID;
       if (typeof providerID !== 'string' || providerID === '') continue;
-      if (typeof modelID !== 'string' || modelID === '') continue;
+
+      // Key on the registry's public `id`: `opencode models` prints
+      // `${providerID}/${id}`, and the wizard looks variants up with exactly
+      // that string. `modelID` is the upstream model and can be shared by
+      // several public entries (e.g. OpenAI's `gpt-6-luna` and
+      // `gpt-6-luna-fast`), so it is only a fallback for registry shapes that
+      // do not expose a usable `id`.
+      const publicId = usableId(entry.id) ?? usableId(entry.modelID);
+      if (publicId === undefined) continue;
       if (!Array.isArray(entry.variants)) continue;
 
       const ids: string[] = [];
@@ -114,7 +129,7 @@ export async function populateVariantsFromModelList(): Promise<void> {
       }
 
       // Entry only when at least one variant id; duplicates: last wins.
-      if (ids.length > 0) variantsByModel[`${providerID}/${modelID}`] = ids;
+      if (ids.length > 0) variantsByModel[`${providerID}/${publicId}`] = ids;
     }
 
     // Only cache a non-empty registry (mirrors the models cache rule).

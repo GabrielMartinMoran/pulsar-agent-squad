@@ -1,4 +1,4 @@
-> Owner: PAS maintainers · Updated: 2026-10-14
+> Owner: PAS maintainers · Updated: 2026-10-26
 
 # Domain
 
@@ -29,9 +29,11 @@ Rules the harness enforces regardless of worker or model:
 - **Single-use approval.** A source change requires explicit user approval
   scoped to a feature or task set; approval never authorizes later scope
   expansion. Source: `src/agents/Pulsar Agent Squad.md` (Lead invariants).
-- **Sequential developer and QA.** Outside the research batch, delegations run
-  one atomic task at a time; developer and QA never run concurrently. Source:
-  `specs/features/product/lead-parallel-research.feature`.
+- **Sequential development and QA.** Research may be parallel when disjoint;
+  developer and QA work must not race over a changing tree, even in Turbo's
+  background tasks. Sources:
+  `specs/features/product/lead-parallel-research.feature`,
+  `specs/features/product/turbo-mode.feature`.
 - **Cheapest sufficient test level.** Every behavior is tested at its lightest
   reliable level, and every scenario carries exactly one class tag: `@unit`,
   `@integration`, `@contract`, `@e2e`, or `@manual`. Workers implement and
@@ -53,7 +55,8 @@ One term per concept; the contracts use these names:
 
 | Term | Meaning |
 |---|---|
-| Lead | The strong control-plane agent; the only user-facing role; plans and adjudicates, never edits source |
+| PAS Lead | Original strong primary; plans/adjudicates and delegates source changes; never edits source |
+| Pulsar Agent Turbo | Optional strong primary; plans, edits and verifies directly, with selective background workers |
 | Worker | A lightweight role: `pas_researcher`, `pas_developer`, or `pas_qa` |
 | Gate | A mandatory stop with an explicit exit condition |
 | Pin | A verbatim string asserted in tests so a built or installed prompt cannot drift silently |
@@ -66,8 +69,8 @@ One term per concept; the contracts use these names:
 ## Domain events
 
 The feature lifecycle, in order: plan created → user approval (single-use) →
-developer tasks executed one at a time → QA verdict (PASS, FAIL, BLOCKED) →
-Lead adjudication → archive. Retries loop back to the developer only within
+implementation (direct or one delegated atomic task at a time) → QA verdict
+(PASS, FAIL, BLOCKED; SELF or INDEPENDENT) → primary adjudication → archive. Retries loop back to the developer only within
 the retry policy; everything else escalates or blocks. Sources:
 `src/agents/Pulsar Agent Squad.md` (Runtime workflow),
 `specs/features/product/lead-parallel-research.feature`,

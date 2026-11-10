@@ -81,7 +81,7 @@ describe('pas skills list — read-only summary', () => {
     // No "Global" card line — the CLI does not manage top-level rules.
     expect(r.stdout).not.toMatch(/^\s*Global\s*$/m);
     // Every scope shows "(no rules)" (6 canonical agents).
-    expect(r.stdout.match(/\(no rules\)/g)?.length).toBe(4);
+    expect(r.stdout.match(/\(no rules\)/g)?.length).toBe(5);
   });
 
   it('emits byte-identical output for bare `pas skills` and `pas skills list`', () => {

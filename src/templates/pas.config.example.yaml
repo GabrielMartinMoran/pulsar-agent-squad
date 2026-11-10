@@ -1,0 +1,62 @@
+# PAS project configuration — edit to fit this repository
+version: "0.1"
+product: example-project
+
+runtime:
+  primary: opencode
+
+state:
+  root: ".pas/state"
+  active_path: ".pas/state/active"
+  archived_path: ".pas/state/archived"
+  max_active: 1
+  numbering:
+    start: 1
+    width: 5
+    source: archived
+
+# Mind is optional; disable it if not installed.
+memory:
+  enabled: true
+  provider: mind
+  required: false
+
+mind_spaces:
+  project_space:
+    enabled: true
+    name: "projects/example-project"
+    description: "Project context, decisions, architecture, and checkpoints"
+
+gherkin:
+  enabled: true
+  storage_path: "specs/features"
+  format: gherkin
+  filename_namespace: global
+  persist_to_repo:
+    when: "on_done"
+    format: "merged"
+  include:
+    - "product/*"
+    - "application/*"
+  exclude:
+    - "researcher/*"
+    - "sandbox/*"
+
+sdd:
+  enabled: true
+  change_memory:
+    auto_create: true
+  delta:
+    removal_policy: "remove"
+    resolve_on: "on_done"
+  memory_tracking: true
+
+config_policy:
+  require_confirmation: true
+
+models:
+  lead: strong
+  researcher: light
+  developer: light
+  qa: light
+

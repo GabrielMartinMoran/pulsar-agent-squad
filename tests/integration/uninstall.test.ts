@@ -19,6 +19,7 @@ describe('uninstall command', () => {
     const content = '---\nname: test\n---\n# Test';
     const agents = [
       'Pulsar Agent Squad.md',
+      'Pulsar Agent Turbo.md',
       'pas_researcher.md',
       'pas_developer.md',
       'pas_qa.md',
@@ -39,6 +40,7 @@ describe('uninstall command', () => {
     const stdout = result.stdout.toString();
     expect(stdout).toContain('DRY-RUN: rm');
      expect(stdout).toContain('Pulsar Agent Squad.md');
+     expect(stdout).toContain('Pulsar Agent Turbo.md');
      expect(stdout).toContain('pas_researcher.md');
      expect(stdout).toContain('pas_developer.md');
      expect(stdout).toContain('pas_qa.md');
@@ -73,6 +75,7 @@ describe('uninstall command: pas-toolkit plugin', () => {
     const agentContent = '---\nname: test\n---\n# Test';
     for (const agent of [
       'Pulsar Agent Squad.md',
+      'Pulsar Agent Turbo.md',
       'pas_researcher.md',
       'pas_developer.md',
       'pas_qa.md',
@@ -101,6 +104,7 @@ describe('uninstall command: pas-toolkit plugin', () => {
     expect(existsSync(fixturePlugin)).toBe(true);
     expect(existsSync(unrelatedPlugin)).toBe(true);
     expect(existsSync(join(fixtureAgentsDir, 'pas_developer.md'))).toBe(true);
+    expect(existsSync(join(fixtureAgentsDir, 'Pulsar Agent Turbo.md'))).toBe(true);
   });
 
   it('should remove the plugin file but keep the plugins directory and siblings', async () => {

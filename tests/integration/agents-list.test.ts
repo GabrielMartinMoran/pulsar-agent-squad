@@ -71,8 +71,8 @@ describe('pas agents list — read-only summary', () => {
     expect(out).toContain('pas_qa');
     expect(out).toContain('Pulsar Agent Squad');
     // All agents report default model + variant; reasoning effort is retired.
-    expect(out.match(/Model:\s+default/g)?.length).toBe(4);
-    expect(out.match(/Variant:\s+default/g)?.length).toBe(4);
+    expect(out.match(/Model:\s+default/g)?.length).toBe(5);
+    expect(out.match(/Variant:\s+default/g)?.length).toBe(5);
     expect(out).not.toContain('Reasoning effort:');
   });
 
