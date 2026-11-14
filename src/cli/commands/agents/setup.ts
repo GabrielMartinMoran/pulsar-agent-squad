@@ -10,34 +10,35 @@
  *
  * Uses @inquirer/prompts for interactive search/select/confirm prompts.
  * The pure loop logic lives in `./setup-core`; this module is the
- * thin I/O wiring (real prompts, real config helpers, console output).
+ * thin I/O wiring (real prompts, adapter-provided persistence and
+ * discovery, console output).
+ *
+ * Target selection: `--target=<id>` chooses a registered setup adapter.
+ * OpenCode is the default. Unsupported ids fail before any config read.
  */
 
 import { defineCommand } from 'citty';
 import search from '@inquirer/search';
 import select from '@inquirer/select';
 import confirm from '@inquirer/confirm';
-import {
-  readConfig,
-  createBackup,
-  setAgentModel,
-  removeAgentOverride,
-  writeConfig,
-} from '../../lib/config-safety';
-import {
-  discoverModels,
-  discoverVariants,
-  populateVariantsFromModelList,
-  type Model,
-} from '../../lib/model-discovery';
+import input from '@inquirer/input';
 import {
   PAS_AGENTS as PRESENTER_PAS_AGENTS,
   getModelGuidance as presenterGetModelGuidance,
   getModelGuidanceLabel as presenterGetModelGuidanceLabel,
 } from './presenter';
-import { runSetupWizard, isAbortPromptError } from './setup-core';
+import type { AnySetupTargetAdapter, SetupTargetAdapter } from './targets/adapter';
+import {
+  getSetupTarget,
+  resolveSetupTarget,
+  supportedTargetIds,
+} from './targets/adapter';
+import { formatAgentOutput } from './targets/opencode';
+import { runSetupWizard, isAbortPromptError, type Action } from './setup-core';
+import type { Model } from '../../lib/model-discovery';
 import { createEscapeController } from '../../lib/prompt-escape';
 
+export { formatAgentOutput };
 export const PAS_AGENTS = PRESENTER_PAS_AGENTS;
 
 function currentModelLabel(config: Record<string, unknown> | undefined): string | undefined {
@@ -110,21 +111,59 @@ export function getModelGuidanceLabel(agentName: string) {
 }
 
 /**
- * Format a human-friendly summary line for an agent's model configuration.
- * Shows "default" when no model override is set. Used by the setup wizard
- * preview only — the list surface uses the richer card view from
- * `./presenter`.
+ * Prompt for the tool to configure. Choices come from the adapter registry,
+ * not the manifest, so every offered option really has a setup adapter.
+ * OpenCode is the default.
  */
-export function formatAgentOutput(
-  agentName: string,
-  modelId: string | undefined,
-  variant?: string,
-): string {
-  const lines: string[] = [];
-  lines.push(`Agent: ${agentName}`);
-  lines.push(`Model: ${modelId ?? 'default'}`);
-  lines.push(`Variant: ${variant && variant !== 'default' ? variant : 'default'}`);
-  return lines.join('\n');
+async function selectTargetPrompt(signal: AbortSignal): Promise<string> {
+  const choices = supportedTargetIds().map((id) => {
+    const adapter = getSetupTarget(id)!;
+    return {
+      value: id,
+      name: adapter.label,
+      description: id === 'opencode' ? 'default' : id,
+    };
+  });
+
+  return select<string>(
+    {
+      message: 'Which tool do you want to configure?',
+      choices,
+      default: 'opencode',
+    },
+    { signal, clearPromptOnDone: true },
+  );
+}
+
+/** Registry seam for target resolution (injectable in tests). */
+export interface SetupTargetRegistry {
+  resolve(id: string): AnySetupTargetAdapter;
+}
+
+/** Options for `resolveSetupAdapter`. */
+export interface ResolveSetupAdapterOptions {
+  /** Explicit `--target` value; when present the selection prompt is skipped. */
+  target?: string;
+  prompts: {
+    selectTarget: () => Promise<string>;
+  };
+  registry?: SetupTargetRegistry;
+}
+
+/**
+ * Resolve the setup adapter for an explicit target or ask which tool to
+ * configure exactly once. Kept separate from the command so the
+ * no-prompt-when-explicit contract is testable without a TTY.
+ */
+export async function resolveSetupAdapter(
+  options: ResolveSetupAdapterOptions,
+): Promise<AnySetupTargetAdapter> {
+  const registry = options.registry ?? { resolve: resolveSetupTarget };
+  const targetId =
+    options.target !== undefined && options.target.length > 0
+      ? options.target
+      : await options.prompts.selectTarget();
+  return registry.resolve(targetId);
 }
 
 /**
@@ -135,19 +174,25 @@ export function formatAgentOutput(
 async function selectAgentPrompt(
   config: Record<string, unknown>,
   signal: AbortSignal,
+  adapter: SetupTargetAdapter,
 ): Promise<string> {
+  const names = adapter.agents.map((agent) => agent.name);
+  const guidanceByName = new Map(
+    adapter.agents.map((agent) => [agent.name, agent.guidance] as const),
+  );
+
   return search<string>(
     {
       message: 'Select agent to configure',
       source: async (term: string | undefined) => {
         const filtered = term
-          ? PAS_AGENTS.filter((a) => a.toLowerCase().includes(term.toLowerCase()))
-          : PAS_AGENTS;
+          ? names.filter((a) => a.toLowerCase().includes(term.toLowerCase()))
+          : names;
 
         return filtered.map((name) => {
           const currentModel = currentModelLabel(config.agent?.[name as string]);
           const currentVariant = currentVariantLabel(config.agent?.[name as string]);
-          const guidance = presenterGetModelGuidanceLabel(name);
+          const guidance = guidanceByName.get(name);
           return {
             value: name,
             name: name,
@@ -165,14 +210,57 @@ export default defineCommand({
     name: 'setup',
     description: 'Interactively configure PAS agent models',
   },
-  async run() {
+  args: {
+    target: {
+      type: 'string',
+      description: 'Setup target tool id (default: opencode)',
+    },
+  },
+  async run(ctx) {
+    const args = (ctx as { args?: Record<string, unknown> } | undefined)?.args ?? {};
+    const explicitTarget =
+      typeof args.target === 'string' && args.target.length > 0 ? args.target : undefined;
+
     try {
+      // STEP 0: choose the tool, unless `--target` already named one. The
+      // Escape controller exists only when the selection prompt can run.
+      let esc: ReturnType<typeof createEscapeController> | undefined;
+      let adapter: AnySetupTargetAdapter;
+      try {
+        // Resolve before reading config: an unsupported target must fail
+        // without touching any file or starting an interaction.
+        adapter = await resolveSetupAdapter({
+          target: explicitTarget,
+          prompts: {
+            selectTarget: () => {
+              esc = createEscapeController();
+              return selectTargetPrompt(esc.signal);
+            },
+          },
+        });
+      } catch (err) {
+        if (isAbortPromptError(err)) {
+          // Escape on the target prompt exits cleanly, like outer escape.
+          return;
+        }
+        throw err;
+      } finally {
+        esc?.dispose();
+      }
+
+      // Fail fast before any prompt or config read (e.g. missing `pi` binary).
+      adapter.preflight?.();
+
+      // Target-owned pre-configure step (Pi installs missing packages). It
+      // runs inside the wizard, before the first prompt and any model merge.
+      const prepare = adapter.prepare;
+
       // Read config first to detect malformed JSON before any interaction
-      const config = readConfig();
+      const config = adapter.readConfig();
 
       await runSetupWizard(config as Parameters<typeof runSetupWizard>[0], {
         prompts: {
-          selectAgent: selectAgentPrompt,
+          selectAgent: (config, signal) => selectAgentPrompt(config, signal, adapter),
           chooseAction: async (agentName, signal) =>
             select<Action>(
               {
@@ -229,20 +317,62 @@ export default defineCommand({
               },
               { signal, clearPromptOnDone: true },
             ),
+          selectThinking: async (levels, signal) =>
+            select<string>(
+              {
+                message: 'Select thinking level',
+                choices: levels.map((level) => ({ value: level, name: level })),
+              },
+              { signal, clearPromptOnDone: true },
+            ),
+          inputModel: async (agentName, signal) =>
+            input(
+              {
+                message: `Enter a model id for ${agentName}`,
+              },
+              { signal, clearPromptOnDone: true },
+            ),
           confirmApply: async (preview, signal) =>
             confirm(
               { message: preview + '\n\n' + 'Apply this change?', default: true },
               { signal, clearPromptOnDone: true },
             ),
         },
-        discoverModels,
-        populateVariantsFromModelList,
-        discoverVariants,
-        setAgentModel: (c, agent, model, variant) => setAgentModel(c, agent, model, variant),
-        removeAgentOverride,
-        createBackup,
-        writeConfig,
-        formatOutput: formatAgentOutput,
+        discoverModels: () => adapter.discoverModels(),
+        populateVariantsFromModelList: () => adapter.populateVariants(),
+        discoverVariants: (modelId) => adapter.discoverVariants(modelId),
+        modelSupportsThinking: (model) => adapter.modelSupportsThinking?.(model) === true,
+        setAgentModel: (c, agent, modelId, variant, thinking, provider) =>
+          adapter.setAgentModel(
+            c,
+            agent,
+            modelId,
+            adapter.supportsThinking ? provider : variant,
+            thinking,
+          ),
+        removeAgentOverride: (c, agent) => adapter.removeAgentOverride(c, agent),
+        createBackup: () => adapter.createBackup(),
+        writeConfig: (c) => adapter.writeConfig(c),
+        formatOutput: (agentName, modelId, variant, thinking, provider) =>
+          adapter.formatOutput(agentName, modelId, variant, thinking, provider),
+        reloadHint: adapter.reloadHint,
+        noModelsHint: adapter.noModelsHint,
+        supportsVariants: adapter.supportsVariants,
+        supportsThinking: adapter.supportsThinking === true,
+        thinkingLevels: adapter.thinkingLevels ?? [],
+        supportsManualModelInput: adapter.supportsManualModelInput === true,
+        prepare: prepare
+          ? () =>
+              prepare({
+                env: process.env,
+                confirm: (message) =>
+                  confirm({ message, default: true }, { clearPromptOnDone: true }),
+              })
+          : undefined,
+        reloadConfig:
+          prepare && adapter.prepareReloadsConfig
+            ? () => adapter.readConfig() as Parameters<typeof runSetupWizard>[0]
+            : undefined,
         output: (line) => console.log(line),
         isAbortPromptError,
         // Outer escape exits cleanly: no error log, no error exit code.
@@ -256,9 +386,9 @@ export default defineCommand({
       });
     } catch (err) {
       // Outer escape is handled inside runSetupWizard; anything reaching
-      // here is a genuine failure (malformed config, file I/O error,
-      // unhandled exception in a prompt). Preserve existing error
-      // semantics for those.
+      // here is a genuine failure (unsupported target, malformed config,
+      // missing target binary, file I/O error, unhandled exception in a
+      // prompt). Preserve existing error semantics for those.
       console.error('Error:', err instanceof Error ? err.message : String(err));
       process.exit(1);
     }

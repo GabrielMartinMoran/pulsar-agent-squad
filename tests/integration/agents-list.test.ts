@@ -67,8 +67,10 @@ describe('pas agents list — read-only summary', () => {
 
     const out = r.stdout;
     expect(out).toContain('pas_researcher');
-    expect(out).toContain('pas_developer');
-    expect(out).toContain('pas_qa');
+    expect(out).toContain('pas_engineer');
+    expect(out).toContain('pas_engineer');
+    expect(out).toContain('pas_copilot');
+    expect(out).toContain('pas_copilot');
     expect(out).toContain('Pulsar Agent Squad');
     // All agents report default model + variant; reasoning effort is retired.
     expect(out.match(/Model:\s+default/g)?.length).toBe(5);
@@ -78,7 +80,7 @@ describe('pas agents list — read-only summary', () => {
 
   it('should print the same summary for bare `pas agents` and `pas agents list`', () => {
     writeConfigFile(tempHome, {
-       agent: { pas_developer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' } },
+       agent: { pas_engineer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' } },
     });
     const bare = runPas(tempHome, ['agents']);
     const list = runPas(tempHome, ['agents', 'list']);
@@ -91,8 +93,8 @@ describe('pas agents list — read-only summary', () => {
   it('should show the configured model and variant for an overridden agent', () => {
     writeConfigFile(tempHome, {
       agent: {
-         pas_developer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
-         pas_qa: { model: 'opencode/deepseek-v4-pro' },
+         pas_engineer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
+         pas_copilot: { model: 'opencode/deepseek-v4-pro' },
       },
     });
     const r = runPas(tempHome, ['agents', 'list']);
@@ -112,7 +114,7 @@ describe('pas agents list — read-only summary', () => {
 
   it('should not modify the config file (read-only)', () => {
     const file = writeConfigFile(tempHome, {
-       agent: { pas_developer: { model: 'anthropic/claude-sonnet-4-6' } },
+       agent: { pas_engineer: { model: 'anthropic/claude-sonnet-4-6' } },
     });
     const before = readFileSync(file, 'utf-8');
     const r = runPas(tempHome, ['agents', 'list']);
@@ -123,7 +125,7 @@ describe('pas agents list — read-only summary', () => {
 
   it('should accept --plain on `pas agents list` and emit no ANSI codes', () => {
     writeConfigFile(tempHome, {
-       agent: { pas_developer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' } },
+       agent: { pas_engineer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' } },
     });
     const r = runPas(tempHome, ['agents', 'list', '--plain']);
     expect(r.exitCode).toBe(0);
@@ -159,8 +161,8 @@ describe('pas agents list — read-only summary', () => {
   it('should keep bare `pas agents` and `pas agents list` byte-identical with --plain', () => {
     writeConfigFile(tempHome, {
       agent: {
-         pas_developer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
-         pas_qa: { model: 'opencode/deepseek-v4-pro' },
+         pas_engineer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
+         pas_copilot: { model: 'opencode/deepseek-v4-pro' },
       },
     });
     const bare = runPas(tempHome, ['agents', '--plain']);

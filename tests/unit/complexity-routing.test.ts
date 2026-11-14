@@ -11,8 +11,8 @@ describe('PAS roster and Lead contract', () => {
       'Pulsar Agent Squad',
       'Pulsar Agent Turbo',
       'pas_researcher',
-      'pas_developer',
-      'pas_qa',
+      'pas_engineer',
+      'pas_copilot',
     ]);
   });
 
@@ -21,8 +21,8 @@ describe('PAS roster and Lead contract', () => {
     expect(agentFiles.sort()).toEqual([
       'Pulsar Agent Squad.md',
       'Pulsar Agent Turbo.md',
-      'pas_developer.md',
-      'pas_qa.md',
+      'pas_copilot.md',
+      'pas_engineer.md',
       'pas_researcher.md',
     ]);
     expect(leadPrompt).not.toContain('nas_planner');
@@ -32,15 +32,15 @@ describe('PAS roster and Lead contract', () => {
   it('configures the Lead as primary and allows only the three PAS workers', () => {
     const frontmatter = leadPrompt.split('---')[1];
     expect(frontmatter).toContain('mode: primary');
-    expect(frontmatter).toContain('pas_toolkit: allow');
-    expect(frontmatter.match(/pas_toolkit: allow/g) ?? []).toHaveLength(1);
-    expect(frontmatter).toMatch(/"pas_researcher": allow/);
-    expect(frontmatter).toMatch(/"pas_developer": allow/);
-    expect(frontmatter).toMatch(/"pas_qa": allow/);
-    expect(frontmatter).toContain('"specs/*.feature": allow');
-    expect(frontmatter).toContain('"specs/**/*.feature": allow');
-    const readBlock = frontmatter.split('read:')[1].split('edit:')[0];
-    expect(readBlock).toContain('"docs/**": allow');
+    expect(frontmatter.match(/action: pas_toolkit/g) ?? []).toHaveLength(1);
+    expect(frontmatter).toContain('action: subagent\n    resource: "pas_researcher"\n    effect: allow');
+    expect(frontmatter).toContain('action: subagent\n    resource: "pas_engineer"\n    effect: allow');
+    expect(frontmatter).toContain('action: subagent\n    resource: "pas_copilot"\n    effect: allow');
+    expect(frontmatter).not.toContain('resource: "pas_developer"');
+    expect(frontmatter).not.toContain('resource: "pas_qa"');
+    expect(frontmatter).toContain('resource: "specs/*.feature"\n    effect: allow');
+    expect(frontmatter).toContain('resource: "specs/**/*.feature"\n    effect: allow');
+    expect(frontmatter).toContain('action: read\n    resource: "docs/**"\n    effect: allow');
     expect(frontmatter).not.toContain('planner');
     expect(frontmatter).not.toContain('developer_mini');
   });
@@ -49,8 +49,9 @@ describe('PAS roster and Lead contract', () => {
     expect(leadPrompt).toContain('combine the orchestrator and planner responsibilities');
     expect(leadPrompt).toContain('Research Quality Gate');
     expect(leadPrompt).toContain('Planning Quality Gate');
-    expect(leadPrompt).toContain('one atomic task at a time');
-    expect(leadPrompt).toContain('Adjudicate QA');
+    expect(leadPrompt).toContain('the pair is one unit');
+    expect(leadPrompt).toContain("pair's verdict");
+    expect(leadPrompt).toContain('Adjudicate.');
     expect(leadPrompt).toContain('never edits source code');
     expect(leadPrompt).toContain('Implementation plan is ready. Do you');
     expect(leadPrompt).toContain('.pas/state/');
@@ -68,34 +69,32 @@ describe('PAS roster and Lead contract', () => {
 describe('PAS worker contracts', () => {
   it('uses light model guidance for every worker', () => {
     expect(getModelGuidance('pas_researcher')).toBe('light');
-    expect(getModelGuidance('pas_developer')).toBe('light');
-    expect(getModelGuidance('pas_qa')).toBe('light');
+    expect(getModelGuidance('pas_engineer')).toBe('light');
+    expect(getModelGuidance('pas_copilot')).toBe('light');
     expect(getModelGuidance('Pulsar Agent Squad')).toBe('heavy');
     expect(getModelGuidance('Pulsar Agent Turbo')).toBe('heavy');
   });
 
-  it('keeps researcher and QA read-only while developer can implement', () => {
+  it('keeps researcher and copilot read-only while engineer can implement', () => {
     const researcher = readFileSync('src/agents/pas_researcher.md', 'utf-8');
-    const developer = readFileSync('src/agents/pas_developer.md', 'utf-8');
-    const qa = readFileSync('src/agents/pas_qa.md', 'utf-8');
+    const engineer = readFileSync('src/agents/pas_engineer.md', 'utf-8');
+    const copilot = readFileSync('src/agents/pas_copilot.md', 'utf-8');
 
-    expect(researcher).toMatch(/edit: deny/);
-    expect(researcher).toMatch(/write: deny/);
-    expect(qa).toMatch(/edit: deny/);
-    expect(qa).toMatch(/write: deny/);
-    expect(developer).toMatch(/edit:\n\s+"\*": allow/);
-    expect(developer).toContain('".pas/**": deny');
-    expect(developer).toContain('"specs/*.feature": deny');
-    expect(developer).toContain('"specs/**/*.feature": deny');
-    expect(developer).toContain('one approved atomic task');
-    expect(developer).toContain('Red -> Green -> Refactor');
-    expect(developer).toContain('Skill Assignment Contract');
-    expect(developer).toContain('BLOCKED');
+    expect(researcher).toContain('action: edit\n    resource: "*"\n    effect: deny');
+    expect(copilot).toContain('action: edit\n    resource: "*"\n    effect: deny');
+    expect(engineer).toContain('action: edit\n    resource: "*"\n    effect: allow');
+    expect(engineer).toContain('resource: ".pas/**"\n    effect: deny');
+    expect(engineer).toContain('resource: "specs/*.feature"\n    effect: deny');
+    expect(engineer).toContain('resource: "specs/**/*.feature"\n    effect: deny');
+    expect(engineer).toContain('one approved atomic task');
+    expect(engineer).toContain('Red -> Green -> Refactor');
+    expect(engineer).toContain('Skill Assignment Contract');
+    expect(engineer).toContain('BLOCKED');
   });
 
-  it('requires structured evidence and one QA verdict', () => {
+  it('requires structured evidence and one copilot verdict', () => {
     const researcher = readFileSync('src/agents/pas_researcher.md', 'utf-8');
-    const qa = readFileSync('src/agents/pas_qa.md', 'utf-8');
+    const copilot = readFileSync('src/agents/pas_copilot.md', 'utf-8');
     expect(researcher).toContain('<research_report>');
     expect(researcher).toContain('<source_exhaustion>');
     expect(researcher).toContain('<hypotheses>');
@@ -103,13 +102,13 @@ describe('PAS worker contracts', () => {
     expect(researcher).toContain('<repository_sources');
     expect(researcher).toContain('<skill_application>');
     expect(researcher).toContain('<memory_writes>');
-    expect(qa).toContain('run the full test suite,');
-    expect(qa).toContain('<authorization_check>');
-    expect(qa).toContain('<scenario_results>');
-    expect(qa).toContain('<test_sufficiency>');
-    expect(qa).toContain('<skill_compliance>');
-    expect(qa).toContain('<linter_check>');
-    expect(qa.match(/<qa_verdict>/g)).toHaveLength(2);
-    expect(qa).toContain('PASS | FAIL | BLOCKED');
+    expect(copilot.replace(/\s+/g, ' ')).toContain('run the full project test suite');
+    expect(copilot).toContain('<authorization_check>');
+    expect(copilot).toContain('<scenario_results>');
+    expect(copilot).toContain('<test_sufficiency>');
+    expect(copilot).toContain('<skill_compliance>');
+    expect(copilot).toContain('<linter_check>');
+    expect(copilot.match(/<audit_report>/g)).toHaveLength(3);
+    expect(copilot).toContain('PASS | FAIL | BLOCKED');
   });
 });

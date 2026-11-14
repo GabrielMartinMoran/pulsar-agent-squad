@@ -250,8 +250,8 @@ describe('Setup wizard — PAS agents list', () => {
       'Pulsar Agent Squad',
       'Pulsar Agent Turbo',
       'pas_researcher',
-      'pas_developer',
-      'pas_qa',
+      'pas_engineer',
+      'pas_copilot',
     ]);
   });
 });
@@ -259,8 +259,8 @@ describe('Setup wizard — PAS agents list', () => {
 describe('Setup wizard — agent model capability guidance', () => {
   it('should classify all PAS workers as light-model agents', () => {
     expect(getModelGuidance('pas_researcher')).toBe('light');
-    expect(getModelGuidance('pas_developer')).toBe('light');
-    expect(getModelGuidance('pas_qa')).toBe('light');
+    expect(getModelGuidance('pas_engineer')).toBe('light');
+    expect(getModelGuidance('pas_copilot')).toBe('light');
   });
 
   it('should classify the PAS Lead as the heavy-model agent', () => {
@@ -328,6 +328,8 @@ function silentPrompts(): SetupPrompts {
     chooseAction: fail,
     searchModel: fail,
     chooseVariant: fail,
+    selectThinking: fail,
+    inputModel: fail,
     confirmApply: fail,
   };
 }

@@ -1,0 +1,15 @@
+# Pi packages installed by the PAS `pi` target.
+# One package source per line. Blank lines and lines starting with `#` are ignored.
+# Active entries are installed; commented entries are optional and opt-in.
+
+npm:pi-subagents
+npm:pi-web-access
+npm:@juicesharp/rpiv-ask-user-question
+npm:@juicesharp/rpiv-todo
+
+# Optional additions — uncomment to install.
+# npm:diffing                            # file diff review workflow
+# npm:@langfuse/pi-observability-plugin  # tracing and observability for Pi sessions
+# npm:pi-mcp-adapter                     # bridge Pi to MCP servers
+# npm:gentle-engram                      # persistent memory layer
+# npm:billion-context                    # large-context retrieval helper

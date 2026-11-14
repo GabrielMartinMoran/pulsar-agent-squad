@@ -111,8 +111,8 @@ describe('pas agents profile save — non-interactive', () => {
   it('writes a profile file containing only canonical agent model+variant', () => {
     writeOpencodeConfig(tempHome, {
       agent: {
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
-        pas_qa: { model: 'opencode/deepseek-v4-pro' },
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
+        pas_copilot: { model: 'opencode/deepseek-v4-pro' },
         'some-other-agent': { model: 'openai/gpt-5' },
       },
     });
@@ -131,8 +131,8 @@ describe('pas agents profile save — non-interactive', () => {
     expect(existsSync(profilePath)).toBe(true);
     const payload = JSON.parse(readFileSync(profilePath, 'utf-8'));
     expect(payload).toEqual({
-      pas_developer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
-      pas_qa: { model: 'opencode/deepseek-v4-pro' },
+      pas_engineer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
+      pas_copilot: { model: 'opencode/deepseek-v4-pro' },
     });
     expect(payload.some_other_agent ?? payload['some-other-agent']).toBeUndefined();
   });
@@ -140,7 +140,7 @@ describe('pas agents profile save — non-interactive', () => {
   it('drops extra fields beyond `model` and `variant` per agent', () => {
     writeOpencodeConfig(tempHome, {
       agent: {
-        pas_developer: {
+        pas_engineer: {
           model: 'anthropic/claude-sonnet-4-6',
           variant: 'high',
           mode: 'subagent',
@@ -160,13 +160,13 @@ describe('pas agents profile save — non-interactive', () => {
     );
     const payload = JSON.parse(readFileSync(profilePath, 'utf-8'));
     expect(payload).toEqual({
-      pas_developer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
+      pas_engineer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
     });
   });
 
   it('rejects a duplicate name without overwriting the existing file', () => {
     writeOpencodeConfig(tempHome, {
-      agent: { pas_developer: { model: 'anthropic/claude-sonnet-4-6' } },
+      agent: { pas_engineer: { model: 'anthropic/claude-sonnet-4-6' } },
     });
     const first = runPas(tempHome, ['agents', 'profile', 'save', 'dup']);
     expect(first.exitCode).toBe(0);
@@ -260,8 +260,8 @@ describe('pas agents profile load — applies model overrides from the profile',
         'my-setup.json',
       ),
       JSON.stringify({
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
-        pas_qa: { model: 'opencode/deepseek-v4-pro' },
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6', variant: 'high' },
+        pas_copilot: { model: 'opencode/deepseek-v4-pro' },
       }, null, 2),
     );
 
@@ -270,14 +270,14 @@ describe('pas agents profile load — applies model overrides from the profile',
     const after = JSON.parse(
       readFileSync(join(tempHome, '.config', 'opencode', 'opencode.json'), 'utf-8'),
     );
-    expect(after.agent.pas_developer).toEqual({
+    expect(after.agent.pas_engineer).toEqual({
       model: 'anthropic/claude-sonnet-4-6',
       variant: 'high',
     });
-    expect(after.agent.pas_qa).toEqual({ model: 'opencode/deepseek-v4-pro' });
+    expect(after.agent.pas_copilot).toEqual({ model: 'opencode/deepseek-v4-pro' });
     // The CLI must surface the updated agents in its output.
-    expect(r.stdout).toContain('pas_developer');
-    expect(r.stdout).toContain('pas_qa');
+    expect(r.stdout).toContain('pas_engineer');
+    expect(r.stdout).toContain('pas_copilot');
   });
 
   it('silently ignores profile entries for non-canonical / orphaned agents', () => {
@@ -296,7 +296,7 @@ describe('pas agents profile load — applies model overrides from the profile',
         'legacy.json',
       ),
       JSON.stringify({
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6' },
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6' },
         legacy_agent: { model: 'openai/gpt-5' },
       }, null, 2),
     );
@@ -307,15 +307,15 @@ describe('pas agents profile load — applies model overrides from the profile',
     const after = JSON.parse(
       readFileSync(join(tempHome, '.config', 'opencode', 'opencode.json'), 'utf-8'),
     );
-    expect(after.agent.pas_developer).toEqual({ model: 'anthropic/claude-sonnet-4-6' });
+    expect(after.agent.pas_engineer).toEqual({ model: 'anthropic/claude-sonnet-4-6' });
     expect(after.agent.legacy_agent).toBeUndefined();
   });
 
   it('removes canonical overrides absent from the profile', () => {
     writeOpencodeConfig(tempHome, {
       agent: {
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6' },
-        pas_qa: { model: 'opencode/deepseek-v4-pro' },
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6' },
+        pas_copilot: { model: 'opencode/deepseek-v4-pro' },
       },
     });
     mkdirSync(join(tempHome, '.config', 'opencode', 'pas', 'profiles'), {
@@ -331,7 +331,7 @@ describe('pas agents profile load — applies model overrides from the profile',
         'single.json',
       ),
       JSON.stringify({
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6' },
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6' },
       }, null, 2),
     );
 
@@ -340,8 +340,8 @@ describe('pas agents profile load — applies model overrides from the profile',
     const after = JSON.parse(
       readFileSync(join(tempHome, '.config', 'opencode', 'opencode.json'), 'utf-8'),
     );
-    expect(after.agent.pas_developer).toEqual({ model: 'anthropic/claude-sonnet-4-6' });
-    expect(after.agent.pas_qa).toBeUndefined();
+    expect(after.agent.pas_engineer).toEqual({ model: 'anthropic/claude-sonnet-4-6' });
+    expect(after.agent.pas_copilot).toBeUndefined();
   });
 
   it('preserves unrelated top-level config fields and non-canonical overrides', () => {
@@ -367,7 +367,7 @@ describe('pas agents profile load — applies model overrides from the profile',
         'setup.json',
       ),
       JSON.stringify({
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6' },
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6' },
       }, null, 2),
     );
 
@@ -381,7 +381,7 @@ describe('pas agents profile load — applies model overrides from the profile',
     expect(after.permission).toEqual({ edit: { '*': 'allow' } });
     expect(after.provider).toEqual({ cursor: { name: 'Cursor' } });
     expect(after.agent['user-custom-agent']).toEqual({ model: 'openai/gpt-5' });
-    expect(after.agent.pas_developer).toEqual({ model: 'anthropic/claude-sonnet-4-6' });
+    expect(after.agent.pas_engineer).toEqual({ model: 'anthropic/claude-sonnet-4-6' });
   });
 
   it('creates a timestamped backup of opencode.json before writing', () => {
@@ -401,7 +401,7 @@ describe('pas agents profile load — applies model overrides from the profile',
         'setup.json',
       ),
       JSON.stringify({
-        pas_developer: { model: 'anthropic/claude-sonnet-4-6' },
+        pas_engineer: { model: 'anthropic/claude-sonnet-4-6' },
       }, null, 2),
     );
 
@@ -554,7 +554,7 @@ describe('help — discoverability of the `profile` subcommand', () => {
 describe('storage path — files live in ~/.config/opencode/pas/profiles/', () => {
   it('saved profiles land under the approved contract path', () => {
     writeOpencodeConfig(tempHome, {
-      agent: { pas_developer: { model: 'anthropic/claude-sonnet-4-6' } },
+      agent: { pas_engineer: { model: 'anthropic/claude-sonnet-4-6' } },
     });
     const r = runPas(tempHome, ['agents', 'profile', 'save', 'path-check']);
     expect(r.exitCode).toBe(0);

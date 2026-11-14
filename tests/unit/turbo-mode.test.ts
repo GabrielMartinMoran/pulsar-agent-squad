@@ -4,29 +4,34 @@ import { readFileSync } from 'fs';
 const turbo = readFileSync('src/agents/Pulsar Agent Turbo.md', 'utf-8');
 const lead = readFileSync('src/agents/Pulsar Agent Squad.md', 'utf-8');
 const frontmatter = turbo.split('---')[1];
-const directExecution = turbo.split('### Direct execution: full Developer + QA discipline')[1]?.split('### Background workers')[0] ?? '';
+const directExecution = turbo.split('### Direct execution: full engineer + copilot discipline')[1]?.split('### Background workers')[0] ?? '';
 
 describe('Pulsar Agent Turbo alternative primary mode', () => {
   it('has source-edit and verification capabilities without modifying the PAS Lead', () => {
     expect(frontmatter).toContain('mode: primary');
-    expect(frontmatter).toContain('edit: allow');
-    expect(frontmatter).toContain('write: allow');
-    expect(frontmatter).toContain('bash: allow');
-    expect(frontmatter).toContain('pas_toolkit: allow');
+    expect(frontmatter).toContain('action: edit\n    resource: "*"\n    effect: allow');
+    expect(frontmatter).toContain('action: shell\n    resource: "*"\n    effect: allow');
+    expect(frontmatter).toContain('action: pas_toolkit\n    resource: "*"\n    effect: allow');
     expect(lead).toContain('You never edit source code');
-    expect(lead).toContain('    "pas_qa": allow');
+    expect(lead).toContain('resource: "pas_copilot"\n    effect: allow');
   });
 
   it('can spawn exactly the existing three worker roles', () => {
-    const taskBlock = frontmatter.split('  task:')[1];
-    expect(taskBlock).toContain('"*": deny');
-    for (const role of ['pas_researcher', 'pas_developer', 'pas_qa']) {
-      expect(taskBlock).toContain(`"${role}": allow`);
+    expect(frontmatter).toContain(
+      'action: subagent\n    resource: "*"\n    effect: deny',
+    );
+    for (const role of ['pas_researcher', 'pas_engineer', 'pas_copilot']) {
+      expect(frontmatter).toContain(
+        `action: subagent\n    resource: "${role}"\n    effect: allow`,
+      );
     }
-    expect(taskBlock).not.toContain('pas_planner');
+    expect(frontmatter).not.toContain('resource: "pas_planner"');
+    expect(frontmatter).not.toContain('resource: "pas_developer"');
+    expect(frontmatter).not.toContain('resource: "pas_qa"');
     expect(turbo).toContain('background: true');
     expect(turbo).toContain('fallback');
-    expect(turbo).toContain('logically sequential');
+    expect(turbo).toContain('run concurrently by design');
+    expect(turbo).toContain('no two sessions ever');
   });
 
   it('defaults to solo work but escalates on risk and context pressure', () => {
@@ -73,7 +78,7 @@ describe('Pulsar Agent Turbo alternative primary mode', () => {
       expect(directExecution).toContain(tag);
     }
     expect(directExecution).toContain('happy/error paths');
-    expect(directExecution).toContain('QA loop (mandatory even when SELF)');
+    expect(directExecution).toContain('Independent audit loop (mandatory even when SELF)');
     expect(directExecution).toContain('HEALTHY_PYRAMID');
     expect(directExecution).toContain('read-only formatter validation');
     expect(directExecution).toContain('unchanged stable tree');

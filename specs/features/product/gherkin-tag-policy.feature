@@ -24,4 +24,4 @@ Feature: Scenario class tags for test automation levels
     Given a scenario tagged with its class
     Then the developer implements its tests at that level
     And the developer escalates instead of upgrading when the level is insufficient
-    And QA flags tests that are heavier or lighter than the tag
+    And the copilot flags tests that are heavier or lighter than the tag

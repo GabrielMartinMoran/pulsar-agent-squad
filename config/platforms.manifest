@@ -8,3 +8,7 @@ codex|file|src/templates/platforms/codex/AGENTS.md.tmpl|platforms/codex/AGENTS.m
 gemini-cli|file|src/templates/platforms/gemini-cli/AGENTS.md.tmpl|platforms/gemini-cli/AGENTS.md|.gemini/agents
 kiro|file|src/templates/platforms/kiro/AGENTS.md.tmpl|platforms/kiro/AGENTS.md|.kiro/agents
 vscode|file|src/templates/platforms/vscode/pas.instructions.md.tmpl|platforms/vscode/.vscode/pas.instructions.md|.vscode
+pi|dir|src/agents/pi|platforms/pi/agents|.pi/agent/agents
+pi|dir|src/skills/pi|platforms/pi/skills|.pi/agent/skills
+pi|file|src/templates/platforms/pi/settings.snippet.json|platforms/pi/settings.snippet.json|.pi/agent/pas-settings.snippet.json
+pi|dir|src/tools/pi/pas-toolkit|platforms/pi/extensions/pas-toolkit|.pi/agent/extensions/pas-toolkit

@@ -397,7 +397,7 @@ async function runAddFlow(
           `Added ${scope === 'agent' ? `agent "${agentName}" ` : 'all PAS agents '}rule: ${pattern} → ${ruleAction}`,
         );
         deps.output(
-          'Run `pas build --target=opencode && pas install --target=opencode` to propagate the rule into the dist + installed agent files, then restart OpenCode for the change to take effect at runtime.',
+          'Run `pas install --target=opencode` to rebuild and install the updated agent files, then restart OpenCode for the change to take effect at runtime.',
         );
         return { kind: 'applied', config: modified };
       }
@@ -474,7 +474,7 @@ async function runRemoveFlow(
         `Removed ${scope === 'agent' ? `agent "${agentName}" ` : 'all PAS agents '}rule: ${pattern}`,
       );
       deps.output(
-        'Run `pas build --target=opencode && pas install --target=opencode` to propagate the change into the dist + installed agent files, then restart OpenCode for the change to take effect at runtime.',
+        'Run `pas install --target=opencode` to rebuild and install the updated agent files, then restart OpenCode for the change to take effect at runtime.',
       );
       return { kind: 'applied', config: modified };
     }
@@ -504,7 +504,7 @@ async function runClearFlow(
   deps.writeConfig(modified);
   deps.output('Cleared all PAS agent skill policies.');
   deps.output(
-    'Run `pas build --target=opencode && pas install --target=opencode` to propagate the change into the dist + installed agent files, then restart OpenCode for the change to take effect at runtime.',
+    'Run `pas install --target=opencode` to rebuild and install the updated agent files, then restart OpenCode for the change to take effect at runtime.',
   );
   return { kind: 'applied', config: modified };
 }

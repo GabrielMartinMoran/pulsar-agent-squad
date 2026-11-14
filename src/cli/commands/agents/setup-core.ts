@@ -12,9 +12,9 @@
  *      another can be configured in the same run.
  *   2. Escape on the main agent list exits cleanly without error.
  *   3. Escape on inner steps goes back exactly one step.
- *   4. Cache the `opencode models` list in memory after the first
+ *   4. Cache the target's model list in memory after the first
  *      successful load during the current wizard run.
- *      (Implemented in `lib/model-discovery.ts`; this module just calls
+ *      (Implemented by the target adapter; this module just calls
  *      `deps.discoverModels()`.)
  */
 
@@ -31,6 +31,10 @@ export interface SetupPrompts {
   chooseAction: (agentName: string, signal: AbortSignal) => Promise<Action>;
   searchModel: (models: Model[], signal: AbortSignal) => Promise<Model>;
   chooseVariant: (modelId: string, variants: string[], signal: AbortSignal) => Promise<string>;
+  /** Choose a thinking level for a model that reports thinking support. */
+  selectThinking?: (levels: readonly string[], signal: AbortSignal) => Promise<string>;
+  /** Manual model entry when discovery returns nothing. */
+  inputModel?: (agentName: string, signal: AbortSignal) => Promise<string>;
   confirmApply: (preview: string, signal: AbortSignal) => Promise<boolean>;
 }
 
@@ -48,6 +52,18 @@ export interface PromptSignalSession {
 
 /** All side-effecting dependencies the wizard needs. */
 export interface SetupWizardDeps {
+  /**
+   * Optional target pre-configure step (for example, installing missing Pi
+   * packages). Runs after preflight and before the first wizard prompt.
+   * Returns a summary line/block to print.
+   */
+  prepare?: () => Promise<string | undefined>;
+  /**
+   * Re-read the target config after `prepare`. Targets whose pre-configure
+   * step rewrites the config file (Pi's `install`) must supply this so the
+   * model merge starts from the post-install file.
+   */
+  reloadConfig?: () => OpenCodeConfig;
   prompts: SetupPrompts;
   discoverModels: () => Promise<Model[]>;
   populateVariantsFromModelList: () => Promise<void>;
@@ -57,11 +73,33 @@ export interface SetupWizardDeps {
     agentName: string,
     modelId: string,
     variant?: string,
+    thinking?: string,
+    provider?: string,
   ) => OpenCodeConfig;
   removeAgentOverride: (config: OpenCodeConfig, agentName: string) => OpenCodeConfig;
   createBackup: () => string;
   writeConfig: (config: OpenCodeConfig) => void;
-  formatOutput: (agentName: string, modelId?: string, variant?: string) => string;
+  formatOutput: (
+    agentName: string,
+    modelId?: string,
+    variant?: string,
+    thinking?: string,
+    provider?: string,
+  ) => string;
+  /** Closing message after a successful write (target-owned, e.g. reload hint). */
+  reloadHint?: string;
+  /** Message shown when model discovery returns nothing (target-owned). */
+  noModelsHint?: string;
+  /** Whether the target supports the variant step. Defaults to enabled. */
+  supportsVariants?: boolean;
+  /** Whether the target supports a thinking-level step. */
+  supportsThinking?: boolean;
+  /** Thinking levels offered, in display order. */
+  thinkingLevels?: readonly string[];
+  /** Whether discovery falls back to manual model entry. */
+  supportsManualModelInput?: boolean;
+  /** Whether a discovered model reports thinking support. */
+  modelSupportsThinking?: (model: Model) => boolean;
   output: (line: string) => void;
   /** Recognise AbortPromptError (or whatever the prompt library throws on escape). */
   isAbortPromptError: (err: unknown) => boolean;
@@ -123,11 +161,12 @@ async function runConfirmStep(
   agentName: string,
   model: Model,
   variant: string | undefined,
+  thinking: string | undefined,
   currentConfig: OpenCodeConfig,
   deps: SetupWizardDeps,
   createSignal: () => PromptSignalSession,
 ): Promise<ConfirmOutcome> {
-  const preview = deps.formatOutput(agentName, model.id, variant);
+  const preview = deps.formatOutput(agentName, model.id, variant, thinking, model.provider);
   const session = createSignal();
   let confirmed: boolean;
   try {
@@ -145,11 +184,18 @@ async function runConfirmStep(
     return { kind: 'decline' };
   }
 
-  const modified = deps.setAgentModel(currentConfig, agentName, model.id, variant);
+  const modified = deps.setAgentModel(
+    currentConfig,
+    agentName,
+    model.id,
+    variant,
+    thinking,
+    model.provider,
+  );
   deps.createBackup();
   deps.writeConfig(modified);
-  deps.output(deps.formatOutput(agentName, model.id, variant));
-  deps.output('Restart OpenCode for changes to take effect.');
+  deps.output(deps.formatOutput(agentName, model.id, variant, thinking, model.provider));
+  if (deps.reloadHint) deps.output(deps.reloadHint);
   return { kind: 'applied', config: modified };
 }
 
@@ -168,6 +214,15 @@ export async function runSetupWizard(
   let appliedChanges = 0;
 
   const createSignal = deps.createPromptSignal ?? defaultCreatePromptSignal;
+
+  // Pre-configure step (e.g. Pi packages) runs before the first prompt and
+  // before any model merge. A target that rewrites its config on install
+  // supplies `reloadConfig` so the merge starts from the post-install file.
+  if (deps.prepare) {
+    const summary = await deps.prepare();
+    if (summary) deps.output(summary);
+    if (deps.reloadConfig) currentConfig = deps.reloadConfig();
+  }
 
   outerLoop: while (true) {
     // STEP 1: select_agent (outer). Escape here exits cleanly.
@@ -214,7 +269,7 @@ export async function runSetupWizard(
         deps.createBackup();
         deps.writeConfig(modified);
         deps.output(deps.formatOutput(agentName, undefined));
-        deps.output('Restart OpenCode for changes to take effect.');
+        if (deps.reloadHint) deps.output(deps.reloadHint);
         currentConfig = modified;
         appliedChanges++;
         continue outerLoop;
@@ -223,18 +278,33 @@ export async function runSetupWizard(
       // action === 'change_model'
       // STEP 3 (passive): discover models.
       const allModels = await deps.discoverModels();
-      if (allModels.length === 0) {
-        deps.output('No models discovered. Is opencode installed and working?');
+
+      if (allModels.length > 0) {
+        await deps.populateVariantsFromModelList();
+      } else if (!deps.supportsManualModelInput || !deps.prompts.inputModel) {
+        // Preserve the historical OpenCode behavior: hint and go back.
+        if (deps.noModelsHint) deps.output(deps.noModelsHint);
         continue outerLoop;
+      } else if (deps.noModelsHint) {
+        deps.output(deps.noModelsHint);
       }
-      await deps.populateVariantsFromModelList();
 
       searchLoop: while (true) {
-        // STEP 4: search_model. Escape → back to choose_action.
+        // STEP 4: search_model (or manual entry when discovery was empty).
+        // Escape → back to choose_action.
         const searchSession = createSignal();
         let model: Model;
         try {
-          model = await deps.prompts.searchModel(allModels, searchSession.signal);
+          if (allModels.length > 0) {
+            model = await deps.prompts.searchModel(allModels, searchSession.signal);
+          } else {
+            const entered = await deps.prompts.inputModel!(agentName, searchSession.signal);
+            const trimmed = entered.trim();
+            if (!trimmed) {
+              continue searchLoop;
+            }
+            model = { id: trimmed, provider: '', name: trimmed };
+          }
         } catch (err) {
           if (deps.isAbortPromptError(err)) {
             continue actionLoop;
@@ -244,13 +314,60 @@ export async function runSetupWizard(
           searchSession.dispose();
         }
 
-        const variants = deps.discoverVariants(model.id);
+        const thinkingOffered =
+          deps.supportsThinking === true &&
+          deps.modelSupportsThinking?.(model) === true &&
+          deps.prompts.selectThinking !== undefined;
+
+        if (thinkingOffered) {
+          thinkingLoop: while (true) {
+            const thinkingSession = createSignal();
+            let thinking: string;
+            try {
+              thinking = await deps.prompts.selectThinking!(
+                deps.thinkingLevels ?? [],
+                thinkingSession.signal,
+              );
+            } catch (err) {
+              if (deps.isAbortPromptError(err)) {
+                continue searchLoop;
+              }
+              throw err;
+            } finally {
+              thinkingSession.dispose();
+            }
+
+            // Confirm → escape goes back to the thinking step.
+            const outcome = await runConfirmStep(
+              agentName,
+              model,
+              undefined,
+              thinking,
+              currentConfig,
+              deps,
+              createSignal,
+            );
+            if (outcome.kind === 'applied') {
+              currentConfig = outcome.config;
+              appliedChanges++;
+              continue outerLoop;
+            }
+            if (outcome.kind === 'escape') {
+              continue thinkingLoop;
+            }
+            // decline → back to action
+            continue actionLoop;
+          }
+        }
+
+        const variants = deps.supportsVariants === false ? [] : deps.discoverVariants(model.id);
 
         if (variants.length === 0) {
-          // No variant step. Confirm → escape goes back to search_model.
+          // No option step. Confirm → escape goes back to search_model.
           const outcome = await runConfirmStep(
             agentName,
             model,
+            undefined,
             undefined,
             currentConfig,
             deps,
@@ -288,6 +405,7 @@ export async function runSetupWizard(
             agentName,
             model,
             variant,
+            undefined,
             currentConfig,
             deps,
             createSignal,

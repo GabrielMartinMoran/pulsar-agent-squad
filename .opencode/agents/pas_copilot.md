@@ -1,0 +1,1 @@
+../../src/agents/pas_copilot.md

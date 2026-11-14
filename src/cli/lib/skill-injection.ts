@@ -1,40 +1,19 @@
 /**
- * Build-time injection of CLI-managed `permission.skill` rules into
- * the dist agent's frontmatter.
+ * Compile CLI-managed per-agent skill rules into built OpenCode agents.
  *
- * The runtime precedence bug (memory
- * permission-skill-precedence-bug-confirmed-20260701): the agent's
- * source frontmatter contains a top-level `*`: allow which, when
- * merged with the user's `opencode.json` at runtime, shadows per-agent
- * `permission.skill.<pattern>` rules. OpenCode resolves the
- * `permission` block as "last matching rule wins", but the source
- * frontmatter is the LAST writer, so its `*`: allow catches every
- * tool key — including `skill` — and the user's per-agent skill rules
- * never apply.
+ * The `pas skills` commands still read and write the legacy
+ * `agent.<name>.permission.skill` config shape. This build step also reads
+ * native V2 `agents.<name>.permissions` rules, then emits skill entries in
+ * each source agent's V2 `permissions` list. Appending them preserves
+ * OpenCode's last-matching-rule-wins behavior after broad wildcard rules.
  *
- * The fix: at build time, compile the user's per-agent
- * `permission.skill` block INTO the dist frontmatter's `permission:`
- * block, placed AFTER the `*`: allow line. This makes the frontmatter
- * the single runtime source of truth, eliminates the merge ambiguity,
- * and preserves the `pas skills` CLI ergonomics — the user keeps
- * writing to `opencode.json` via `pas skills add/remove/setup`, and
- * `pas build && pas install` propagates the rules into the dist +
- * installed agent files.
+ * Build and install propagate the configured rules into the dist and
+ * installed OpenCode agent files.
  *
- * Design contract (per approved scope):
- *   - The new `skill:` key is a SIBLING of the existing `*`: allow
- *     child inside the `permission:` block, not a child of any other
- *     key.
- *   - The new `skill:` key is placed immediately AFTER the
- *     `*`: allow line (so it wins the last-match-wins resolution).
- *   - If the user's per-agent `permission.skill` block is empty or
- *     missing, no injection happens and the dist file is byte-identical
- *     to the source (no `skill:` line added).
- *   - If the source frontmatter already has a `skill:` child (not
- *     expected for canonical PAS agents, but defensive), its children
- *     are replaced with the merged rules.
- *   - Non-OpenCode platforms (no `permission:` block in the source)
- *     are NOT touched.
+ * If the user's per-agent skill block is empty or missing, the dist file
+ * remains byte-identical to the source. Legacy V1 agent frontmatter remains
+ * supported during migration; non-OpenCode targets have no OpenCode
+ * permissions block and are copied without modification.
  *
  * The build step reads the user's `opencode.json` via the
  * `PAS_OPENCODE_CONFIG_PATH` env var when set (for testability and
@@ -59,27 +38,159 @@ export interface PermissionBlockBounds {
   endLine: number;
 }
 
+/** Bounds of the native V2 `permissions` YAML list in an agent frontmatter. */
+export interface PermissionsBlockBounds {
+  /** Zero-based line index of the top-level `permissions:` key. */
+  permissionsLine: number;
+  /** First child line, or the line immediately after `permissions:` if empty. */
+  firstChildLine: number;
+  /** Last child line, inclusive. */
+  lastChildLine: number;
+  /** Line immediately after the permissions block. */
+  endLine: number;
+}
+
+/** Locate the native V2 top-level `permissions:` list in agent frontmatter. */
+export function findPermissionsBlock(content: string): PermissionsBlockBounds | null {
+  const lines = content.split('\n');
+  const permissionsLine = lines.findIndex((line) => line === 'permissions:');
+  if (permissionsLine === -1) return null;
+
+  let firstChildLine = -1;
+  let lastChildLine = -1;
+  for (let i = permissionsLine + 1; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line === '' || line.startsWith('  ') || line.startsWith('\t')) {
+      if (firstChildLine === -1) firstChildLine = i;
+      lastChildLine = i;
+    } else {
+      break;
+    }
+  }
+
+  if (firstChildLine === -1) {
+    return {
+      permissionsLine,
+      firstChildLine: permissionsLine + 1,
+      lastChildLine: permissionsLine,
+      endLine: permissionsLine + 1,
+    };
+  }
+
+  return {
+    permissionsLine,
+    firstChildLine,
+    lastChildLine,
+    endLine: lastChildLine + 1,
+  };
+}
+
+function yamlScalar(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      return JSON.parse(trimmed) as string;
+    } catch {
+      return trimmed;
+    }
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replace(/''/g, "'");
+  }
+  return trimmed;
+}
+
+function renderV2SkillRules(
+  rules: Record<string, PermissionAction>,
+): string[] {
+  return Object.entries(rules).flatMap(([resource, effect]) => [
+    '  - action: skill',
+    `    resource: ${JSON.stringify(resource)}`,
+    `    effect: ${effect}`,
+  ]);
+}
+
 /**
- * Read the per-agent `permission.skill` block from a parsed config.
- * Returns an empty object when the block is missing or empty.
- * Invalid action values are filtered out defensively.
+ * Replace source skill entries with configured rules in native V2 format.
+ * Rules are appended after all other permission entries, preserving
+ * last-match-wins behavior. Returns the input unchanged when the source has no
+ * V2 permissions list or when there are no rules to inject.
+ */
+export function injectSkillRules(
+  content: string,
+  rules: Record<string, PermissionAction>,
+): string {
+  if (Object.keys(rules).length === 0) return content;
+
+  const block = findPermissionsBlock(content);
+  if (!block) return content;
+
+  const lines = content.split('\n');
+  const retained: string[] = [];
+  let cursor = block.firstChildLine;
+
+  while (cursor <= block.lastChildLine) {
+    const actionMatch = /^  - action:\s*(.*?)\s*$/.exec(lines[cursor]!);
+    if (!actionMatch) {
+      retained.push(lines[cursor]!);
+      cursor++;
+      continue;
+    }
+
+    const itemStart = cursor;
+    cursor++;
+    while (
+      cursor <= block.lastChildLine &&
+      !/^  - action:\s*/.test(lines[cursor]!)
+    ) {
+      cursor++;
+    }
+
+    if (yamlScalar(actionMatch[1]!) !== 'skill') {
+      retained.push(...lines.slice(itemStart, cursor));
+    }
+  }
+
+  return [
+    ...lines.slice(0, block.firstChildLine),
+    ...retained,
+    ...renderV2SkillRules(rules),
+    ...lines.slice(block.endLine),
+  ].join('\n');
+}
+
+/**
+ * Read per-agent skill rules from legacy V1 or native V2 config.
+ * If both forms contain the same pattern, the V2 rule takes precedence.
  */
 export function readAgentSkillBlock(
   config: OpenCodeConfig,
   agentName: string,
 ): Record<string, PermissionAction> {
-  const block = config.agent?.[agentName]?.permission?.skill;
-  if (!block || typeof block !== 'object' || Array.isArray(block)) {
-    return {};
-  }
   const out: Record<string, PermissionAction> = {};
-  for (const [pattern, action] of Object.entries(
-    block as Record<string, unknown>,
-  )) {
-    if (action === 'allow' || action === 'deny' || action === 'ask') {
-      out[pattern] = action;
+
+  const legacyBlock = config.agent?.[agentName]?.permission?.skill;
+  if (legacyBlock && typeof legacyBlock === 'object' && !Array.isArray(legacyBlock)) {
+    for (const [pattern, action] of Object.entries(legacyBlock)) {
+      if (action === 'allow' || action === 'deny' || action === 'ask') {
+        out[pattern] = action;
+      }
     }
   }
+
+  const nativeRules = config.agents?.[agentName]?.permissions;
+  if (Array.isArray(nativeRules)) {
+    for (const rule of nativeRules) {
+      if (
+        rule.action === 'skill' &&
+        typeof rule.resource === 'string' &&
+        (rule.effect === 'allow' || rule.effect === 'deny' || rule.effect === 'ask')
+      ) {
+        out[rule.resource] = rule.effect;
+      }
+    }
+  }
+
   return out;
 }
 
@@ -184,7 +295,7 @@ function renderSkillChildren(
 }
 
 /**
- * Insert (or replace) the `permission.skill` block in the agent's
+ * Insert (or replace) the legacy V1 `permission.skill` block in the agent's
  * frontmatter. The new `skill:` key is placed AFTER the `*`: allow
  * line (so OpenCode's "last matching rule wins" semantics make the
  * specific skill rules override the catch-all). If the source
@@ -244,11 +355,12 @@ export function injectSkillBlock(
 
 /**
  * Build-time entry point: read the user's opencode.json (or fixture),
- * pull the per-agent `permission.skill` block, and inject it into the
- * agent's dist content. Returns the content UNCHANGED when:
+ * pull its per-agent skill rules, and inject them into the agent's dist
+ * content using V2 frontmatter when present, with V1 support during migration.
+ * Returns the content UNCHANGED when:
  *   - the user config is not parseable (return source as-is)
  *   - the agent has no `permission.skill` rules in user config
- *   - the source has no `permission:` block
+ *   - the source has no supported OpenCode permissions block
  *
  * The config path is `PAS_OPENCODE_CONFIG_PATH` when set, otherwise the
  * default path used by `readConfig()`.
@@ -267,5 +379,8 @@ export function injectSkillPoliciesFromConfig(
     return content;
   }
   const rules = readAgentSkillBlock(config, agentName);
+  if (findPermissionsBlock(content)) {
+    return injectSkillRules(content, rules);
+  }
   return injectSkillBlock(content, rules);
 }

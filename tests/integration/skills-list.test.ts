@@ -75,18 +75,20 @@ describe('pas skills list — read-only summary', () => {
      const r = runPas(tempHome, ['skills', 'list', '--plain']);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toContain('pas_researcher');
-    expect(r.stdout).toContain('pas_developer');
-    expect(r.stdout).toContain('pas_qa');
+    expect(r.stdout).toContain('pas_engineer');
+    expect(r.stdout).toContain('pas_engineer');
+    expect(r.stdout).toContain('pas_copilot');
+    expect(r.stdout).toContain('pas_copilot');
     expect(r.stdout).toContain('Pulsar Agent Squad');
     // No "Global" card line — the CLI does not manage top-level rules.
     expect(r.stdout).not.toMatch(/^\s*Global\s*$/m);
-    // Every scope shows "(no rules)" (6 canonical agents).
+    // Every scope shows "(no rules)" (5 canonical agents).
     expect(r.stdout.match(/\(no rules\)/g)?.length).toBe(5);
   });
 
   it('emits byte-identical output for bare `pas skills` and `pas skills list`', () => {
     writeConfigFile(tempHome, {
-       agent: { pas_developer: { permission: { skill: { 'git-*': 'deny' } } } },
+       agent: { pas_engineer: { permission: { skill: { 'git-*': 'deny' } } } },
     });
     // Use --skip-discovery so the output does not depend on the live
     // `opencode debug skill` ordering (which can vary between calls
@@ -114,15 +116,15 @@ describe('pas skills list — read-only summary', () => {
   it('reflects the configured per-agent rules', () => {
     writeConfigFile(tempHome, {
       agent: {
-         pas_developer: { permission: { skill: { 'git-*': 'deny' } } },
+         pas_engineer: { permission: { skill: { 'git-*': 'deny' } } },
       },
     });
     const r = runPas(tempHome, ['skills', 'list', '--plain']);
     expect(r.exitCode).toBe(0);
-    // The pattern must appear in the pas_developer block; indexOf confirms
-    // pas_developer is the right card.
-    const devIdx = r.stdout.indexOf('pas_developer');
-    const nextIdx = r.stdout.indexOf('pas_qa');
+    // The pattern must appear in the pas_engineer block; indexOf confirms
+    // pas_engineer is the right card.
+    const devIdx = r.stdout.indexOf('pas_engineer');
+    const nextIdx = r.stdout.indexOf('pas_copilot');
     expect(devIdx).toBeGreaterThanOrEqual(0);
     expect(nextIdx).toBeGreaterThan(devIdx);
     const devBlock = r.stdout.slice(devIdx, nextIdx);
@@ -131,7 +133,7 @@ describe('pas skills list — read-only summary', () => {
 
   it('does not modify the config file (read-only)', () => {
     const file = writeConfigFile(tempHome, {
-       agent: { pas_developer: { permission: { skill: { 'docs-writer': 'deny' } } } },
+       agent: { pas_engineer: { permission: { skill: { 'docs-writer': 'deny' } } } },
     });
     const before = readFileSync(file, 'utf-8');
     // --skip-discovery avoids `opencode debug skill` writing its own
@@ -145,7 +147,7 @@ describe('pas skills list — read-only summary', () => {
 
   it('does not create a backup file (read-only surface does not write)', () => {
     writeConfigFile(tempHome, {
-       agent: { pas_developer: { permission: { skill: { 'docs-writer': 'deny' } } } },
+       agent: { pas_engineer: { permission: { skill: { 'docs-writer': 'deny' } } } },
     });
     // --skip-discovery to isolate our backup behavior from the OpenCode
     // side effect on the config file.
@@ -198,7 +200,7 @@ describe('pas skills list — read-only summary', () => {
 
   it('preserves byte-identical output between bare and subcommand with --plain', () => {
     writeConfigFile(tempHome, {
-       agent: { pas_qa: { permission: { skill: { 'foo': 'deny' } } } },
+       agent: { pas_copilot: { permission: { skill: { 'foo': 'deny' } } } },
     });
     // --skip-discovery keeps the assertion focused on the read-only view
     // (live skill ordering varies).
@@ -218,7 +220,7 @@ describe('pas skills list — read-only summary', () => {
 
   it('shows override and default indicators, never success/failure glyphs', () => {
     writeConfigFile(tempHome, {
-       agent: { pas_developer: { permission: { skill: { 'foo': 'deny' } } } },
+       agent: { pas_engineer: { permission: { skill: { 'foo': 'deny' } } } },
     });
     const r = runPas(tempHome, ['skills', 'list', '--plain']);
     expect(r.exitCode).toBe(0);
