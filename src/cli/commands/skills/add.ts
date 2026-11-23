@@ -18,11 +18,7 @@
  */
 
 import { defineCommand } from 'citty';
-import {
-  readConfig,
-  createBackup,
-  writeConfig,
-} from '../../lib/config-safety';
+import { readSkillPolicyConfig, writeSkillPolicyConfig } from '../../lib/policy-migration';
 import {
   addSkillPolicy,
   type PermissionAction,
@@ -84,7 +80,7 @@ export default defineCommand({
         fail('Scope "agent" requires --agent <name>.');
       }
 
-      const config = readConfig();
+      const { config, store } = readSkillPolicyConfig();
       const next = addSkillPolicy(config, scope as WriteScope, pattern, action, agentName);
 
       if (args['dry-run']) {
@@ -92,8 +88,7 @@ export default defineCommand({
         return;
       }
 
-      createBackup();
-      writeConfig(next);
+      writeSkillPolicyConfig(next, store);
       console.log(
          `Added ${scope === 'agent' ? `agent "${agentName}" ` : 'all PAS agents '}rule: ${pattern} → ${action}`,
       );

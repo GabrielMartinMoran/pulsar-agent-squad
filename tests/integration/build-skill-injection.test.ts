@@ -100,6 +100,8 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`
       .env({
         ...process.env,
+        HOME: tempHome,
+        XDG_CONFIG_HOME: join(tempHome, '.config'),
         PAS_OPENCODE_CONFIG_PATH: fixtureConfig,
       })
       .quiet();
@@ -129,6 +131,8 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`
       .env({
         ...process.env,
+        HOME: tempHome,
+        XDG_CONFIG_HOME: join(tempHome, '.config'),
         PAS_OPENCODE_CONFIG_PATH: fixtureConfig,
       })
       .quiet();
@@ -149,6 +153,8 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`
       .env({
         ...process.env,
+        HOME: tempHome,
+        XDG_CONFIG_HOME: join(tempHome, '.config'),
         PAS_OPENCODE_CONFIG_PATH: fixtureConfig,
       })
       .quiet();
@@ -166,6 +172,8 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`
       .env({
         ...process.env,
+        HOME: tempHome,
+        XDG_CONFIG_HOME: join(tempHome, '.config'),
         PAS_OPENCODE_CONFIG_PATH: fixtureConfig,
       })
       .quiet();

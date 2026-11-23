@@ -2,6 +2,7 @@ import { defineCommand } from 'citty';
 import { parseManifest } from '../lib/manifest';
 import { spawnSync } from 'bun';
 import { existsSync, readFileSync } from 'fs';
+import { countLegacySkillRules, loadOrMigratePolicyStore, policyPath } from '../lib/policy-migration';
 
 let FAILURES = 0;
 
@@ -114,6 +115,17 @@ export const doctorCommand = defineCommand({
       } catch {
         fail(`manifest file not readable: ${MANIFEST}`);
       }
+    }
+
+    console.log('');
+    console.log('== doctor: capability policy ==');
+    try {
+      const result = loadOrMigratePolicyStore();
+      pass(`policy store ${result.store ? 'readable and supported' : 'not configured'}: ${policyPath()}`);
+      const ignored = result.store ? countLegacySkillRules() : 0;
+      if (ignored > 0) console.log(`NOTICE: ${ignored} legacy skill rule(s) in opencode.json are ignored; edit policy with pas skills.`);
+    } catch (error) {
+      fail(`policy store unhealthy: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     console.log('');

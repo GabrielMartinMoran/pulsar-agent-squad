@@ -14,6 +14,7 @@ import { installPiPackages, piAvailable } from '../lib/pi-plugins';
 import { resolveArtifactDestination } from '../lib/install-paths';
 import { stalePasAgentFiles } from '../lib/prune-installed';
 import { buildTarget } from '../lib/build-target';
+import { loadPolicyStore } from '../lib/policy-store';
 
 // Re-export the helper so existing imports from this command keep working.
 export { isPiPackageListed } from '../lib/pi-plugins';
@@ -181,6 +182,10 @@ export const installCommand = defineCommand({
       console.error(`ERROR: unknown TARGET '${target}'`);
       process.exit(1);
     }
+
+    // Dry-run does not build or migrate, but it must still reject an invalid
+    // existing store before presenting an install plan.
+    if (dryRun && entries.some((entry) => entry.target === 'opencode')) loadPolicyStore();
 
     // Pi preflight happens before any build or copy. A dry-run previews files
     // and package commands without requiring a Pi installation.

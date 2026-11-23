@@ -297,7 +297,10 @@ describe('built Lead prompt: runtime permission contract', () => {
   });
 
   it('routes out-of-allowlist work to workers without re-litigating boundaries', () => {
-    expect(leadPrompt).toContain('It is read-only and has no shell');
+    const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim();
+    expect(normalizeWhitespace(leadPrompt)).toContain(
+      normalizeWhitespace('It is read-only with a shell for non-mutating commands'),
+    );
     expect(leadPrompt).toContain('Do not re-litigate a boundary mid-run');
     expect(leadPrompt).toContain('Those capabilities never transfer to you');
   });

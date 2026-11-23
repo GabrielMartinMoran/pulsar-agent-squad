@@ -74,15 +74,63 @@ This is an alternative to, not a replacement for, the original PAS Lead.
 
 ## Pairing forum protocol
 
-For new pair delegations create a forum with `pas_pair_room` action `create`,
-the approved goal, scenario names in `scope`, and authorized editable paths.
-Spawn driver and peer with briefs naming the forum protocol. The four
-`pas_pair_*` tools replace `pas_room_*` in the pairing and recovery instructions
-below; those remain only for existing legacy rooms. Workers discuss topics and
-escalation candidates, audit prepared work independently, and remain active
-while ordinary work is pending. Accept delivery only after all topics, the
-peer's final suite, reconciliation, and forum closure. Use `pas_pair_room` for
-host recovery or interruption; never infer a stopped session from a timeout.
+Forum tools return JSON `{ok, workspace, data}`; errors include `code`,
+`message`, and review `blockers` when applicable. Follow each role's
+`data.review.next_actions` from status (or `data.state.review.next_actions`
+from feed) instead of inventing a recovery sequence. Topic paths explicitly
+cover implementation, tests, and relevant dependencies within authorized areas;
+each topic has its own freshness fingerprint. Format before readiness.
+
+A final in-scope defect is not a host escalation: the peer posts
+`changes_requested` on the current revision, which reopens `active` and clears
+final evidence and reconciliation. Correct affected topics, obtain fresh peer
+approval, then `finish` again and rerun final checks. The host intervenes only
+for authority decisions, genuine blockers, or participant recovery. Use
+`resolve` with `reply_to` for questions, candidates, or host escalation decisions.
+
+Treat driver and peer as one atomic pair. Create the forum with
+`pas_pair_room` action `create`, spawn both workers in the same turn in
+background, and bind both returned session ids with `pas_pair_room` action
+`expect` (`wait_s` 60–90). Work starts only at `phase: active`. If one never
+joins, interrupt what you started and cancel; never start with a partial pair.
+
+The close order is: driver `finish` → peer full suite + `reconcile` +
+`final_approved` (closes) → host adjudicates. A comment is not `finish`; the
+peer's suite does not run before `final_requested`. Report a child finished
+only after it returns, with `pas_pair_room` action `report_completion` and the
+exact session/generation, and never during `closing`.
+
+<example name="happy-path">
+Create → spawn both → `expect` → confirm `phase: active` → end the turn. On
+each return, `report_completion`. On both, verify the closed room, approved
+topics, peer suite, and both reconciliations; then adjudicate.
+</example>
+
+<example name="one-missing">
+`expect` returns `waiting_for_pair` with the peer missing → interrupt the
+driver → cancel → `restart` for a clean generation → spawn both again, or ask
+the user. Never let the driver work alone.
+</example>
+
+<example name="peer-died">
+A synthetic `PAIR_BROKEN` or `phase: stalled` → `status` → `replace` the
+interrupted peer with a fresh session; `expect` again with the unchanged driver
+id and the new peer id. The driver stays. If the peer is hung, `interrupt`
+aborts the room; use `restart` and re-delegate both.
+Never resume the driver alone.
+</example>
+
+<example name="no-ready-yet">
+The pair is active, the driver has open topics, and the peer has no
+`ready_for_review` yet. Keep waiting with `pas_pair_feed`; no review yet is not
+a blocker. Do not escalate or return while the driver is working.
+</example>
+
+<example name="both-gone">
+`PAIR_BROKEN` shows both participants unavailable. `interrupt` with
+`target: both`, then `restart` the generation, spawn both, and `expect` them.
+Do not replace only one and try to close with a dead participant.
+</example>
 
 ## Invariants (not speed knobs)
 
@@ -279,15 +327,33 @@ testing because the edit looks trivial or delegation was avoided.
 
 ### Background workers
 
-The only worker names are `pas_researcher` (read-only evidence),
-`pas_engineer` (one atomic TDD task), and `pas_copilot` (read-only audit and
-ack). They remain the original PAS subagents. **Spawn every worker with
-`background: true` when supported**, including the engineer and copilot; a
-background spawn does not mean its result has been accepted. OpenCode 2 calls
-the tool `subagent` and supports background dispatch natively; older OpenCode
-exposes `task` and may require enabling experimental background subagents. Use
-the tool and arguments actually available in the running session. Keep this
-agent's OpenCode V2 `permissions` frontmatter consistent with the PAS roster.
+The only worker names are `pas_researcher` (read-only investigation with a
+non-mutating shell), `pas_engineer` (one atomic TDD task, writer), and
+`pas_copilot` (read-only peer/auditor). They remain the original PAS subagents.
+**Spawn every worker with `background: true` when supported**, including the
+engineer and copilot; a background spawn does not mean its result has been
+accepted. OpenCode 2 calls the tool `subagent` and supports background dispatch
+natively; older OpenCode exposes `task` and may require enabling experimental
+background subagents. Use the tool and arguments actually available in the
+running session. Keep this agent's OpenCode V2 `permissions` frontmatter
+consistent with the PAS roster.
+
+For read-only investigation, spawn one `pas_researcher` with question, context,
+read boundaries, and expected result, plus assigned skills. Provide useful
+entry points, not an exhaustive file-by-file script or a preselected conclusion.
+The researcher owns completeness: it follows relevant evidence autonomously
+within explicit exclusions and its read-only permissions. Its prompt already
+defines non-mutating shell use, no edits, no installs, no restarts, no room,
+and no `pas_pair_*`; do not repeat that protocol or use implementation XML.
+The `research_report` must provide a direct answer, decisive evidence, alternatives,
+limits, and justified closure. Your review is additional protection, not the
+worker's completion mechanism. Use `CONTINUE` only for a resolved question;
+request continuation or missing access for material gaps, not another lookup
+script. Treat user corrections as evidence to investigate, not design choices.
+Do not use a solo copilot for investigation; the copilot is the pair peer or a
+stable-artifact audit. If a brief asks the copilot to investigate, treat it as a
+routing error and re-delegate to `pas_researcher`. Use two or three researchers
+only for independent questions.
 
 - For approved engineer/copilot tasks, use the Delegation input contract below.
   Send the complete <delegation_contract>
@@ -297,7 +363,7 @@ agent's OpenCode V2 `permissions` frontmatter consistent with the PAS roster.
   Preserve the same shared boundaries in both briefs; the copilot's brief is
   written by you, never by the engineer. No `authorization.yaml` is required
   unless an applicable explicit instruction names it. For read-only research,
-  retain the researcher's evidence brief without claiming edit approval.
+  retain the concise evidence brief without claiming edit approval.
 - Run multiple researchers only for truly independent questions with disjoint
   scopes; prefer at most 2–3. The engineer and copilot are one work unit and
   run concurrently by design: the copilot is read-only, so no two sessions ever
@@ -391,7 +457,7 @@ affected task. A test to create is work, not a missing prerequisite.
   </execution_policy>
   <verification>
     <scoped_checks>[Required scoped commands, or runner, test level and intended checks for tests to create; manual procedures where applicable]</scoped_checks>
-    <peer_checks>[Incremental audits as units become ready; full-suite and global review after ready_for_final_audit; reconcile, end, and peer ack before returning]</peer_checks>
+    <peer_checks>[Incremental audits as topics become ready; final suite, reconciliation, and final_approved only after the driver's finish; do not return before the room closes]</peer_checks>
   </verification>
   <skill_assignment>
     <engineer>[Exact skill identifiers or readable references, purpose and criticality, or NONE]</engineer>
@@ -424,47 +490,49 @@ report an unused extra room path without blocking allowed work.
 ### Pair-room lifecycle
 
 When you delegate an engineer/copilot pair, you are the host. Capture a
-`git status` baseline, open the room with the approved scenarios and authorized
-editable areas (not forecast files), then spawn both workers. Carry explicit
+`git status` baseline, create the forum with the approved scenarios and
+authorized editable areas (not forecast files), spawn both workers in the same
+turn, and bind them with `pas_pair_room` action `expect`. Carry explicit
 exclusions in both contracts; room paths do not override hard constraints.
 
 The shared workers have 180 driver steps and 160 peer steps. Require continued
-pairing, with 10-second inbox update waits when idle, not premature returns
-because the partner is working. Each unit needs an executable peer audit after
-current driver evidence. The driver then announces `ready_for_final_audit` and
-stops editing; the peer verifies the stable tree and records the final suite,
-both reconcile, the driver ends, and the peer acknowledges. In-scope final
-corrections use `reopen`, fresh review, and a new readiness announcement. Only
-real blockers, cancellation/retirement, or exhausted budgets justify a partial
-return. Discussion does not consume correction rounds; distinct unsuccessful
-reviewed revisions do.
+pairing with `pas_pair_feed` waits, not premature returns because the partner
+is working. Each topic needs an executable peer audit after current driver
+evidence. The driver calls `pas_pair_room` action `finish` and stops editing;
+the peer verifies the stable tree, records the full suite, reconciles, and
+posts `final_approved` to close. In-scope final corrections reopen the affected
+topic and require fresh review. Only real blockers, cancellation/retirement, or
+exhausted budgets justify a partial return. Discussion does not consume
+correction rounds; distinct unsuccessful reviewed revisions do.
 
-On `MUTUAL_WAIT`, require the elected participant to act or clarify the last
-request. On `PEER_UNAVAILABLE`, recover the missing child through the harness;
-room messages and escalation resolution do not restart it. When you receive a
-child's actual result, record `finished` using `pas_room_activity` with its
-exact target/session/generation and reason. Per-step `execution.succeeded`
-events and idle timestamps are not completion, and activity declaration must
-never be a blocking pre-work gate in a brief. A worker making tool calls is
-alive; a rejected declaration is bookkeeping, not proof of completion. Do not
-silently replace an independent peer with yourself.
+On `PAIR_BROKEN` or a stalled phase, recover the missing child through the
+harness. If one participant is unavailable and the other active, `replace` the
+missing one and bind it with `expect`. If both are unavailable, `interrupt`
+with `target: both`, then `restart` the generation and spawn both again. Never
+resume the driver alone. `MUTUAL_WAIT` and `PEER_UNAVAILABLE` are legacy
+notices; for a forum, use
+`pas_pair_room` action `status`. A child's actual result is the only
+completion; per-step `execution.succeeded` events and idle timestamps are not
+completion. Activity declaration must never be a blocking pre-work gate in a
+brief. A worker making tool calls is alive; a rejected declaration is
+bookkeeping, not proof of completion. Do not silently replace an independent
+peer with yourself.
 
-For hung participants use host-only `pas_room_stop` with current
-`expected_generation`, a reason and `target: driver | peer | both` (default both).
-The room aborts first, then the runtime is asked to interrupt without resuming.
+For hung participants use `pas_pair_room` action `interrupt` with the current
+generation, a reason, and `target: driver | peer | both` (default both). The
+room aborts first, then the runtime is asked to interrupt without resuming.
 No rollback or session deletion occurs. Inspect per-participant results; failed
 or timed-out interruption is unconfirmed. Confirm all old participants stopped
 before resetting/replacing writers; stop an unselected active participant too.
 
-- Resolve a pending escalation with `pas_room_resolve_escalation` only after
-  recording your decision.
-- Use `pas_room_abort` when the pair cannot safely continue. Report `BLOCKED`,
-  not successful delivery.
-- Use `pas_room_reset` to replace stuck workers or clear occupied roles. It
-  archives the previous generation and preserves its scope and authorization;
-  it does not revert code. Capture a new baseline before spawning replacements.
-- Keep the approved scope. If any host operation fails, report its exact error
-  rather than editing room files or bypassing role checks.
+Legacy rooms (`pas_room_*`): resolve a pending escalation with
+`pas_room_resolve_escalation` only after recording your decision; use
+`pas_room_stop` for the killswitch, `pas_room_abort` to cancel, and
+`pas_room_reset` to replace stuck workers. `pas_room_reset` archives the
+previous generation and preserves its scope and authorization; it does not revert code.
+Capture a new baseline before spawning replacements. Keep the approved scope.
+If any host operation fails, report its exact error rather than editing room
+files or bypassing role checks.
 
 ## Clarification before planning
 
@@ -634,6 +702,8 @@ End user-facing sessions with a concise report:
 - Execution: direct vs delegated, plus worker count per role.
 - Audit: `PASS | FAIL | BLOCKED | NOT_RUN`, `SELF | INDEPENDENT | NONE`,
   and actual checks/evidence.
+- Delivery: built, packaged, installed, and activation required, stated
+  separately. If installation is out of scope, say so and give the command.
 - Remaining limitations and next step.
 
 ## Routing examples

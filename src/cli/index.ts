@@ -62,8 +62,10 @@ const main = defineCommand({
     test: () => import('./commands/test').then((m) => m.testCommand),
     uninstall: () => import('./commands/uninstall').then((m) => m.uninstallCommand),
     update: () => import('./commands/update').then((m) => m.updateCommand),
+    forum: () => import('./commands/forum').then((m) => m.forumCommand),
     agents: () => Promise.resolve(agentsCommand),
     skills: () => Promise.resolve(skillsCommand),
+    tools: () => import('./commands/tools/command').then((m) => m.toolsCommand),
   },
 });
 

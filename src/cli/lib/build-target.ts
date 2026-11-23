@@ -13,6 +13,7 @@ import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync }
 import { dirname } from 'path';
 import { parseManifest, type ManifestEntry } from './manifest';
 import { injectSkillPoliciesFromConfig } from './skill-injection';
+import { injectToolPoliciesFromStore } from './policy-injection';
 
 function rmrf(path: string): void {
   if (!path) return;
@@ -51,7 +52,12 @@ function copyMarkdownFile(sourceFile: string, destFile: string, inject: boolean)
 
   const text = content.toString('utf-8');
   const agentName = agentNameFromDestFile(destFile);
-  writeFileSync(destFile, agentName ? injectSkillPoliciesFromConfig(agentName, text) : text);
+  if (!agentName) {
+    writeFileSync(destFile, text);
+    return;
+  }
+  const withSkills = injectSkillPoliciesFromConfig(agentName, text);
+  writeFileSync(destFile, injectToolPoliciesFromStore(agentName, withSkills, process.env.PAS_OPENCODE_CONFIG_PATH));
 }
 
 function copyMarkdownTree(

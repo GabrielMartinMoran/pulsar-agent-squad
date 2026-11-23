@@ -11,7 +11,7 @@
  *     and remove, and is never touched by clear
  *   - backup is created BEFORE the write
  *   - the pattern, action, scope, and agent fields are reflected in
- *     the resulting opencode.json
+ *     the PAS-owned policy store while preserving opencode.json byte-for-byte
  *   - error paths (bad action, bad scope, missing --agent for agent
  *     scope) exit with a non-zero code and a clear message
  *   - --dry-run prints the resulting config without writing
@@ -24,6 +24,7 @@ import { spawnSync } from 'bun';
 import { rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { loadPolicyStore } from '../../src/cli/lib/policy-store';
 
 const REPO_ROOT = join(import.meta.dir, '..', '..');
 
@@ -48,6 +49,26 @@ function writeConfigFile(home: string, content: object): string {
   const file = join(home, '.config', 'opencode', 'opencode.json');
   writeFileSync(file, JSON.stringify(content, null, 2));
   return file;
+}
+
+function readPolicyConfig(home: string): Record<string, any> {
+  const legacy = JSON.parse(readFileSync(join(home, '.config', 'opencode', 'opencode.json'), 'utf-8'));
+  const store = loadPolicyStore(home);
+  const agent: Record<string, any> = {};
+  for (const [name, entry] of Object.entries(legacy.agent ?? {})) {
+    const copy = { ...(entry as Record<string, any>) };
+    if (copy.permission) {
+      copy.permission = { ...copy.permission };
+      delete copy.permission.skill;
+      if (!Object.keys(copy.permission).length) delete copy.permission;
+    }
+    agent[name] = copy;
+  }
+  for (const [name, policy] of Object.entries(store?.agents ?? {})) {
+    if (!Object.keys(policy.skills).length) continue;
+    agent[name] = { ...(agent[name] ?? {}), permission: { ...(agent[name]?.permission ?? {}), skill: policy.skills } };
+  }
+  return { ...legacy, agent };
 }
 
 function listOpencodeDir(home: string): string[] {
@@ -91,12 +112,21 @@ afterEach(() => {
 });
 
 describe('pas skills add — non-interactive', () => {
+  it('keeps opencode.json byte-identical while writing the PAS policy store', () => {
+    const file = writeConfigFile(tempHome, { agent: { pas_engineer: { permission: { skill: { 'legacy-*': 'ask' } } } } });
+    const before = readFileSync(file);
+    const r = runPas(tempHome, ['skills', 'add', 'new-*', 'deny']);
+    expect(r.exitCode).toBe(0);
+    expect(readFileSync(file)).toEqual(before);
+    expect(loadPolicyStore(tempHome)?.agents.pas_engineer?.skills).toEqual({ 'legacy-*': 'ask', 'new-*': 'deny' });
+  });
+
   it('default scope (all-pas) fans out the rule to every canonical PAS agent', () => {
     writeConfigFile(tempHome, {});
     const r = runPas(tempHome, ['skills', 'add', 'docs-writer', 'deny']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     // Top-level permission.skill is NEVER written by the broad scope.
     expect(after.permission?.skill).toBeUndefined();
     // Every canonical agent has the rule on its per-agent block.
@@ -117,7 +147,7 @@ describe('pas skills add — non-interactive', () => {
     ]);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     expect(after.permission?.skill).toBeUndefined();
     for (const name of PAS_AGENTS) {
       expect(after.agent?.[name]?.permission?.skill).toEqual({ 'git-*': 'deny' });
@@ -131,7 +161,7 @@ describe('pas skills add — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'add', 'docs-writer', 'deny']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     // Top-level is preserved as-is (no merge, no overwrite).
     expect(after.permission?.skill).toEqual({ '*': 'allow' });
     // The new rule landed on every canonical agent.
@@ -145,9 +175,8 @@ describe('pas skills add — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'add', 'git-*', 'deny']);
     expect(r.exitCode).toBe(0);
     const files = listOpencodeDir(tempHome);
-    // Expect opencode.json and at least one .bak.* file
-    const backups = files.filter((f) => f.startsWith('opencode.json.bak.'));
-    expect(backups.length).toBeGreaterThanOrEqual(1);
+    // PAS-owned policy updates do not back up or modify OpenCode config.
+    expect(files.some((f) => f.startsWith('opencode.json.bak.'))).toBe(false);
   });
 
   it('preserves native OpenCode wildcards (`*`, `?`) verbatim', () => {
@@ -155,7 +184,7 @@ describe('pas skills add — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'add', 'a*?b', 'allow']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     for (const name of PAS_AGENTS) {
       expect(after.agent?.[name]?.permission?.skill).toEqual({ 'a*?b': 'allow' });
     }
@@ -169,7 +198,7 @@ describe('pas skills add — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'add', 'git-*', 'deny']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     expect(after.default_agent).toBe('Pulsar Agent Squad');
     expect(after.provider).toEqual({ cursor: { name: 'Cursor' } });
     // Top-level permission.skill is NOT created by the broad scope.
@@ -193,7 +222,7 @@ describe('pas skills add — non-interactive', () => {
     ]);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     expect(after.agent?.pas_engineer?.permission?.skill).toEqual({ 'git-*': 'deny' });
     // No other agent is touched.
     for (const name of PAS_AGENTS) {
@@ -209,7 +238,7 @@ describe('pas skills add — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'add', 'docs-writer', 'deny']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     // pas_engineer keeps its existing rule AND gets the new one.
     expect(after.agent?.pas_engineer?.permission?.skill).toEqual({
       '*': 'allow',
@@ -294,7 +323,7 @@ describe('pas skills remove — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'remove', 'a']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     expect(after.agent?.pas_engineer?.permission?.skill).toBeUndefined();
     expect(after.agent?.pas_copilot?.permission?.skill).toBeUndefined();
   });
@@ -309,7 +338,7 @@ describe('pas skills remove — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'remove', 'a']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     // Top-level is preserved verbatim.
     expect(after.permission?.skill).toEqual({ '*': 'allow' });
     // The per-agent rule is removed.
@@ -323,7 +352,7 @@ describe('pas skills remove — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'remove', '*']);
     expect(r.exitCode).toBe(0);
     const files = listOpencodeDir(tempHome);
-    expect(files.some((f) => f.startsWith('opencode.json.bak.'))).toBe(true);
+    expect(files.some((f) => f.startsWith('opencode.json.bak.'))).toBe(false);
   });
 
   it('is a no-op (still exit 0) when the pattern does not exist', () => {
@@ -333,7 +362,7 @@ describe('pas skills remove — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'remove', 'no-such-pattern']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     expect(after.agent?.pas_engineer?.permission?.skill).toEqual({ '*': 'allow' });
   });
 
@@ -352,7 +381,7 @@ describe('pas skills remove — non-interactive', () => {
     ]);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     expect(after.agent?.pas_engineer?.permission?.skill).toEqual({ b: 'ask' });
   });
 
@@ -402,7 +431,7 @@ describe('pas skills clear — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'clear']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     // Top-level is preserved (the CLI does not manage it).
     expect(after.permission?.skill).toEqual({ '*': 'allow' });
     // Per-agent blocks are cleared.
@@ -428,7 +457,7 @@ describe('pas skills clear — non-interactive', () => {
     ]);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     // Top-level is preserved.
     expect(after.permission?.skill).toEqual({ '*': 'allow' });
     // Only the named agent is cleared.
@@ -449,7 +478,7 @@ describe('pas skills clear — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'clear', '--scope', 'all-pas']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     // Top-level is preserved.
     expect(after.permission?.skill).toEqual({ '*': 'allow' });
     // Per-agent block is cleared.
@@ -471,7 +500,7 @@ describe('pas skills clear — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'clear', '--scope', 'all']);
     expect(r.exitCode).toBe(0);
     const file = join(tempHome, '.config', 'opencode', 'opencode.json');
-    const after = JSON.parse(readFileSync(file, 'utf-8'));
+    const after = readPolicyConfig(tempHome);
     // Top-level is preserved (the CLI does not manage it).
     expect(after.permission?.skill).toEqual({ '*': 'allow' });
     expect(after.agent?.pas_engineer?.permission).toBeUndefined();
@@ -496,7 +525,7 @@ describe('pas skills clear — non-interactive', () => {
     const r = runPas(tempHome, ['skills', 'clear']);
     expect(r.exitCode).toBe(0);
     const files = listOpencodeDir(tempHome);
-    expect(files.some((f) => f.startsWith('opencode.json.bak.'))).toBe(true);
+    expect(files.some((f) => f.startsWith('opencode.json.bak.'))).toBe(false);
   });
 
   it('--dry-run prints the resulting config without writing', () => {

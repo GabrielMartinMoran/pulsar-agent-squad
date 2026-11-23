@@ -17,7 +17,7 @@
  */
 
 import { defineCommand } from 'citty';
-import { readConfig } from '../../lib/config-safety';
+import { readSkillPolicyConfig } from '../../lib/policy-migration';
 import { readSkillPolicies } from '../../lib/skill-policies';
 import { listAvailableSkills } from '../../lib/skill-discovery';
 import { buildSkillSummary } from './presenter';
@@ -44,7 +44,7 @@ export default defineCommand({
   },
   run({ args }) {
     try {
-      const config = readConfig();
+      const { config } = readSkillPolicyConfig();
       const view = readSkillPolicies(config);
       const plain = Boolean(args.plain);
       // Citty converts `--skip-discovery` → `skipDiscovery`

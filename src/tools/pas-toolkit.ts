@@ -782,6 +782,9 @@ const INBOX_POLL_MS = 250;
 const INBOX_MAX_WAIT_S = 60;
 export const INBOX_DEFAULT_WAIT_S = 10;
 const ACTIVITY_FRESH_MS = 120_000;
+const PAIR_JOIN_WAIT_DEFAULT_S = 60;
+const PAIR_JOIN_WAIT_MAX_S = 120;
+const PAIR_STALL_GRACE_MS = 30_000;
 const SESSION_READ_TIMEOUT_MS = 1_000;
 const SESSION_STOP_TIMEOUT_MS = 5_000;
 const END_DEFAULT_WAIT_S = 30;
@@ -854,6 +857,7 @@ export interface RoomMember {
 
 type PairRole = 'driver' | 'peer';
 type ParticipantAvailability = 'active' | 'finished' | 'unavailable';
+type ForumPhase = 'waiting_for_pair' | 'active' | 'closing' | 'stalled' | 'closed' | 'aborted';
 interface ParticipantActivity {
   sessionID: string;
   availability: ParticipantAvailability;
@@ -935,17 +939,39 @@ export interface Room {
 }
 
 type ForumCategory = 'comment' | 'question' | 'answer' | 'ready_for_review' | 'approved' | 'changes_requested' | 'clarification_needed' | 'escalation_candidate' | 'candidate_resolved' | 'escalate' | 'escalation_resolved' | 'final_approved';
-interface ForumTopic { id: string; title: string; scenarios: string[]; paths?: string[]; status: 'open' | 'ready' | 'approved'; revision: number; fingerprint?: string; }
+interface ForumTopic { id: string; title: string; scenarios: string[]; paths?: string[]; status: 'open' | 'ready' | 'approved'; revision: number; fingerprint?: string; snapshot?: Record<string, string>; }
 interface ForumPost { id: string; seq: number; topic: string; category: ForumCategory; message: string; role: RoomRole; revision: number; reply_to?: string; evidence?: { command: string; exit_code: number; output: string }; }
-interface PairForum { topics: ForumTopic[]; posts: ForumPost[]; requests: Record<string, { sessionID: string; hash: string; post_ids: string[] }>; reads?: { sessionID: string; topic: string; seq: number }[]; baseline?: Record<string, string>; final_requested?: boolean; final_fingerprint?: string; }
+interface ForumExpectation { driver?: string; peer?: string; deadline?: number; }
+interface ForumStall { sessionID: string; since: number; reason: string; notified?: boolean; }
+interface PairForum {
+  topics: ForumTopic[];
+  posts: ForumPost[];
+  requests: Record<string, { sessionID: string; hash: string; post_ids: string[] }>;
+  reads?: { sessionID: string; topic: string; seq: number }[];
+  baseline?: Record<string, string>;
+  expected?: ForumExpectation;
+  pending_stalls?: Partial<Record<PairRole, ForumStall>>;
+  stalls?: Partial<Record<PairRole, ForumStall>>;
+  notified_escalations?: string[];
+  notified_partner_finished?: string[];
+  final_requested?: boolean;
+  final_fingerprint?: string;
+}
 interface ForumTopicInput { id: string; title: string; scenarios: string[]; paths?: string[]; }
-interface ForumPostInput { topic: string; category: ForumCategory; message: string; reply_to?: string; revision?: number; evidence?: { command: string; exit_code: number; output: string }; }
+interface ForumPostInput { topic: string; category: ForumCategory | 'resolve'; message: string; reply_to?: string; revision?: number; evidence?: { command: string; exit_code: number; output: string }; }
 
 export interface RoomSessionApi {
   get(input: { sessionID: string }, options?: { signal?: AbortSignal }): Promise<{
     id: string; parentID?: string; outcome?: string; time?: { idle?: number; busy?: number };
   }>;
   interrupt?(input: { sessionID: string; resume: false }, options?: { signal?: AbortSignal }): Promise<{ interrupted: boolean }>;
+  synthetic?(input: {
+    sessionID: string;
+    text: string;
+    description?: string;
+    delivery?: 'steer' | 'queue';
+    resume?: boolean;
+  }, options?: { signal?: AbortSignal }): Promise<unknown>;
 }
 
 export interface RoomOpenInput {
@@ -977,7 +1003,7 @@ export interface RoomUpdateResult {
   cursor: string;
   changed: boolean;
   timed_out: boolean;
-  notice?: 'MUTUAL_WAIT' | 'PEER_UNAVAILABLE';
+  notice?: 'MUTUAL_WAIT' | 'PEER_UNAVAILABLE' | 'PAIR_BROKEN' | 'PAIR_INCOMPLETE';
   action_owner?: PairRole;
 }
 
@@ -1332,6 +1358,10 @@ export async function joinRoom(
     if (room.members.some((member) => member.role === role)) {
       throw new Error(`${role} already joined this room`);
     }
+    const expected = room.forum?.expected?.[role];
+    if (expected && expected !== sessionID) {
+      throw new Error(`${role} must be the expected session ${expected}; this session was not spawned for that role`);
+    }
     room.members.push({ sessionID, role });
     const joinedAt = Date.now();
     room.activities ??= {};
@@ -1516,11 +1546,15 @@ export async function waitForUpdates(
       const unavailable = state.status !== 'closed' && state.members.some(candidate => candidate.role !== 'host' &&
         candidate.sessionID !== sessionID && participantActivity(state, candidate.role)?.availability !== undefined &&
         participantActivity(state, candidate.role)?.availability !== 'active');
+      const broken = Boolean(state.forum) && (forumPhase(state) === 'stalled' || unavailable);
+      const incomplete = Boolean(state.forum) && forumPhase(state) === 'waiting_for_pair' &&
+        state.forum?.expected?.deadline !== undefined && timing.now() >= state.forum.expected.deadline;
       const mutual = !terminal && !unavailable && member?.role !== 'host'
         ? await mutualWaitNotice(rootDir, roomId, sessionID, timing.now()) : undefined;
       if (mutual) state = roomState(rootDir, roomId);
+      const meaningfulChange = !state.forum && changed;
       const remaining = deadline - timing.now();
-      if (unread.length > 0 || changed || terminal || unavailable || mutual || remaining <= 0) {
+      if (unread.length > 0 || meaningfulChange || terminal || unavailable || broken || incomplete || mutual || remaining <= 0) {
         const messages = unread.length > 0
           ? await readInbox(rootDir, roomId, sessionID, { unit: input.unit, wait_s: 0 }) : [];
         state = roomState(rootDir, roomId);
@@ -1531,12 +1565,16 @@ export async function waitForUpdates(
         );
         const waitingOwner = state.status === 'open' && mutualWaitKey(state, timing.now()) === state.mutual_wait?.key
           ? state.mutual_wait?.action_owner : undefined;
+        const notice: RoomUpdateResult['notice'] = unavailable || broken
+          ? state.forum ? 'PAIR_BROKEN' : 'PEER_UNAVAILABLE'
+          : incomplete ? 'PAIR_INCOMPLETE'
+          : mutual ? 'MUTUAL_WAIT' : undefined;
+        const actionable = messages.length > 0 || unread.length > 0 || terminal || unavailable || broken || incomplete || Boolean(mutual);
+        const changed = state.forum ? actionable : (cursor !== previous || actionable);
         return {
-          messages, updates, state, cursor,
-          changed: cursor !== previous || messages.length > 0 || terminal || unavailable || Boolean(mutual),
-          timed_out: remaining <= 0 && cursor === previous && messages.length === 0 && !terminal && !unavailable && !mutual,
-          ...(unavailable ? { notice: 'PEER_UNAVAILABLE' as const } : {}),
-          ...(mutual ? { notice: 'MUTUAL_WAIT' as const } : {}),
+          messages, updates, state, cursor, changed,
+          timed_out: remaining <= 0 && !changed,
+          ...(notice ? { notice } : {}),
           ...(mutual || waitingOwner ? { action_owner: mutual ?? waitingOwner } : {}),
         };
       }
@@ -1568,6 +1606,9 @@ export async function setParticipantActivity(
   return mutateRoom(rootDir, roomId, room => {
     const caller = requireMember(room, sessionID);
     if (input.expected_generation !== undefined && input.expected_generation !== (room.generation ?? 1)) throw new Error('activity generation is stale');
+    if (room.forum && forumPhase(room) === 'closing' && (input.state === 'finished' || input.state === 'unavailable')) {
+      throw new Error('final review is in progress; wait for the room to close before reporting completion');
+    }
     let role: PairRole;
     if (caller.role === 'host') {
       if (!input.target || !input.participant_session || input.expected_generation === undefined) throw new Error('host activity reports require exact participant session and generation');
@@ -1599,6 +1640,8 @@ export async function setParticipantActivity(
       } : {}),
       updated_at: at,
     };
+    if (selfActive && room.forum?.stalls?.[role]) delete room.forum.stalls[role];
+    if (selfActive && room.forum?.pending_stalls?.[role]) delete room.forum.pending_stalls[role];
     if (terminal && previous?.availability !== input.state) {
       insertRoomEvent(room, sessionID, caller.role, 'participant_unavailable', `${role}: ${input.state} — ${input.reason ?? 'participant reported completion'}; room messages do not restart this session`);
     }
@@ -1656,26 +1699,54 @@ async function mutualWaitNotice(rootDir: string, roomId: string, sessionID: stri
  */
 export async function applyParticipantLifecycle(
   rootDir: string, roomId: string, sessionID: string, availability: ParticipantAvailability, observedAt: number,
-): Promise<void> {
-  if (availability !== 'active') return;
-  if (!readRoomFile(roomFilePath(rootDir, roomId))) return;
-  await mutateRoom(rootDir, roomId, room => {
+  reason = '',
+): Promise<boolean> {
+  if (availability === 'finished') return false;
+  if (!readRoomFile(roomFilePath(rootDir, roomId))) return false;
+  return mutateRoom(rootDir, roomId, room => {
     const member = findMember(room, sessionID);
-    if (!member || member.role === 'host') return;
+    if (!member || member.role === 'host') return false;
     const previous = participantActivity(room, member.role);
-    if (previous?.joined_at !== undefined && observedAt < previous.joined_at) return;
+    if (previous?.joined_at !== undefined && observedAt < previous.joined_at) return false;
+
+    if (availability === 'unavailable') {
+      if (room.status !== 'open') return false;
+      if (previous?.availability === 'finished' && previous.availability_source === 'host') return false;
+      if (room.forum) {
+        // One candidate per role and grace window. Duplicate runtime events
+        // must not rewrite the candidate, add room noise, or extend the grace.
+        if (room.forum.pending_stalls?.[member.role]) return false;
+        room.forum.pending_stalls ??= {};
+        room.forum.pending_stalls[member.role] = {
+          sessionID, since: observedAt,
+          reason: requireNonEmptyRoomText(reason || 'runtime execution ended before the room closed', 'reason'),
+        };
+        insertRoomEvent(room, sessionID, member.role, 'participant_stall_candidate', `${member.role}: waiting for a restart before declaring it unavailable (${room.forum.pending_stalls[member.role]!.reason})`);
+        return true;
+      }
+      room.activities ??= {};
+      room.activities[member.role] = {
+        sessionID, availability: 'unavailable', availability_at: observedAt, availability_source: 'runtime',
+        joined_at: previous?.joined_at, state: previous?.state ?? 'working', updated_at: observedAt,
+      };
+      const changed = previous?.availability !== 'unavailable';
+      if (changed) {
+        insertRoomEvent(room, sessionID, member.role, 'participant_unavailable', `${member.role}: unavailable — ${reason || 'runtime execution ended'}; the host must recover the pair`);
+      }
+      return changed;
+    }
+
     if (room.stop) {
       const requestedAt = room.stop.requested_at ?? Date.parse(room.aborted_at ?? '');
-      if (observedAt < requestedAt) return;
-      if (previous?.availability_at === observedAt && room.stop.results[member.role]?.detail === 'runtime execution restarted after killswitch; stop is unconfirmed') return;
+      if (observedAt < requestedAt) return false;
+      if (previous?.availability_at === observedAt && room.stop.results[member.role]?.detail === 'runtime execution restarted after killswitch; stop is unconfirmed') return false;
       room.activities ??= {};
       room.activities[member.role] = { sessionID, availability: 'unavailable', availability_at: observedAt, availability_source: 'runtime', joined_at: previous?.joined_at, state: 'working', updated_at: observedAt };
       room.stop.results[member.role] = { sessionID, status: 'failed', detail: 'runtime execution restarted after killswitch; stop is unconfirmed' };
       insertRoomEvent(room, sessionID, member.role, 'stop_unconfirmed', `${member.role}: execution restarted after killswitch; do not replace writers until it is stopped again`);
-      return;
+      return true;
     }
-    if (room.status !== 'open') return;
-    if (previous && previous.availability_source !== 'declared' && observedAt <= previous.availability_at) return;
+    if (previous && previous.availability_source !== 'declared' && observedAt <= previous.availability_at) return false;
     room.activities ??= {};
     room.activities[member.role] = {
       sessionID, availability: 'active', availability_at: previous?.availability_at ?? 0, availability_source: 'runtime',
@@ -1684,9 +1755,42 @@ export async function applyParticipantLifecycle(
       ...(previous?.unit ? { unit: previous.unit } : {}),
       updated_at: observedAt,
     };
+    if (room.forum?.stalls?.[member.role]) delete room.forum.stalls[member.role];
+    if (room.forum?.pending_stalls?.[member.role]) delete room.forum.pending_stalls[member.role];
     if (previous?.availability !== 'active') {
       insertRoomEvent(room, sessionID, member.role, 'participant_availability', `${member.role}: active; runtime execution started`);
     }
+    return false;
+  });
+}
+
+/**
+ * Promote a pending runtime stop into an unavailable participant once the
+ * grace window has elapsed without a new execution start. The grace absorbs
+ * transient `session.execution.failed` events, which are not proof that the
+ * agent died.
+ */
+export async function promoteParticipantStall(
+  rootDir: string, roomId: string, sessionID: string, observedAt: number,
+): Promise<boolean> {
+  if (!readRoomFile(roomFilePath(rootDir, roomId))) return false;
+  return mutateRoom(rootDir, roomId, room => {
+    if (room.status !== 'open') return false;
+    const member = findMember(room, sessionID);
+    if (!member || member.role === 'host') return false;
+    const pending = room.forum?.pending_stalls?.[member.role];
+    if (!pending) return false;
+    const previous = participantActivity(room, member.role);
+    delete room.forum!.pending_stalls![member.role];
+    room.activities ??= {};
+    room.activities[member.role] = {
+      sessionID, availability: 'unavailable', availability_at: observedAt, availability_source: 'runtime',
+      joined_at: previous?.joined_at, state: previous?.state ?? 'working', updated_at: observedAt,
+    };
+    room.forum!.stalls ??= {};
+    room.forum!.stalls[member.role] = { ...pending, notified: false };
+    insertRoomEvent(room, sessionID, member.role, 'participant_unavailable', `${member.role}: unavailable — ${pending.reason}; the host must recover the pair`);
+    return true;
   });
 }
 
@@ -1788,11 +1892,15 @@ export function buildRoomNotice(room: Room, sessionID: string): string | null {
     ? unavailableParticipants(room, sessionID)
     : [];
   const availabilityNotice = unavailable.length > 0
-    ? `[pas-room] PEER_UNAVAILABLE: ${unavailable.join(', ')} stopped before the room completed; room messages do not restart sessions. The host must recover the pair.` : '';
+    ? room.forum
+      ? `[pas-room] PAIR_BROKEN: ${unavailable.join(', ')} is no longer active; stop editing and call pas_pair_room status. The host must recover the pair.`
+      : `[pas-room] PEER_UNAVAILABLE: ${unavailable.join(', ')} stopped before the room completed; room messages do not restart sessions. The host must recover the pair.`
+    : '';
   if (unread.length === 0) return availabilityNotice || null;
   const senders = [...new Set(unread.map((message) => message.role))].join(', ');
   const units = [...new Set(unread.map((message) => message.unit))].join(', ');
-  return `[pas-room] ${unread.length} unread message(s) from ${senders} on ${units}; call pas_room_inbox before your next action.${availabilityNotice ? '\n' + availabilityNotice : ''}`;
+  const inbox = room.forum ? 'pas_pair_feed or pas_pair_topic' : 'pas_room_inbox';
+  return `[pas-room] ${unread.length} unread message(s) from ${senders} on ${units}; call ${inbox} before your next action.${availabilityNotice ? '\n' + availabilityNotice : ''}`;
 }
 
 /**
@@ -2297,6 +2405,59 @@ export async function resetRoom(
   }
 }
 
+function normalizeRoomFileList(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new Error('files must be an array of paths');
+  const files = value
+    .filter((file): file is string => typeof file === 'string')
+    .map((file) => file.trim())
+    .filter((file) => file !== '');
+  if (files.length !== value.length) {
+    throw new Error('files must be an array of non-empty path strings');
+  }
+  return Array.from(new Set(files)).sort();
+}
+
+function recordReconciliation(room: Room, role: PairRole, sessionID: string, files: string[]): void {
+  const reconciliation: RoomReconciliation = room.reconciliation ?? {
+    submissions: {},
+    reconciled: false,
+  };
+  reconciliation.submissions[role] = {
+    sessionID,
+    files,
+    submitted_at: nowIso(),
+  };
+
+  const driver = reconciliation.submissions.driver;
+  const peer = reconciliation.submissions.peer;
+  if (!driver || !peer) {
+    reconciliation.reconciled = false;
+    delete reconciliation.files;
+    delete reconciliation.discrepancies;
+  } else {
+    const onlyDriver = driver.files.filter((file) => !peer.files.includes(file));
+    const onlyPeer = peer.files.filter((file) => !driver.files.includes(file));
+    if (onlyDriver.length === 0 && onlyPeer.length === 0) {
+      reconciliation.reconciled = true;
+      reconciliation.files = [...driver.files];
+      delete reconciliation.discrepancies;
+    } else {
+      reconciliation.reconciled = false;
+      delete reconciliation.files;
+      reconciliation.discrepancies = { only_driver: onlyDriver, only_peer: onlyPeer };
+    }
+  }
+  room.reconciliation = reconciliation;
+}
+
+function clearPeerReconciliation(room: Room): void {
+  if (!room.reconciliation) return;
+  delete room.reconciliation.submissions.peer;
+  room.reconciliation.reconciled = false;
+  delete room.reconciliation.files;
+  delete room.reconciliation.discrepancies;
+}
+
 /**
  * Submit this agent's changed-file list. Both the driver and the peer must
  * submit; the room compares the lists as sets. Re-submitting replaces that
@@ -2308,15 +2469,7 @@ export async function reconcileFiles(
   sessionID: string,
   input: RoomReconcileInput,
 ): Promise<Room> {
-  if (!Array.isArray(input.files)) throw new Error('files must be an array of paths');
-  const files = input.files
-    .filter((file): file is string => typeof file === 'string')
-    .map((file) => file.trim())
-    .filter((file) => file !== '');
-  if (files.length !== input.files.length) {
-    throw new Error('files must be an array of non-empty path strings');
-  }
-  const normalized = Array.from(new Set(files)).sort();
+  const normalized = normalizeRoomFileList(input.files);
 
   return mutateRoom(rootDir, roomId, (room) => {
     const member = requireMember(room, sessionID);
@@ -2326,36 +2479,8 @@ export async function reconcileFiles(
     if (member.role !== 'driver' && member.role !== 'peer') {
       throw new Error('only the driver or the peer may reconcile file lists');
     }
-    const reconciliation: RoomReconciliation = room.reconciliation ?? {
-      submissions: {},
-      reconciled: false,
-    };
-    reconciliation.submissions[member.role] = {
-      sessionID,
-      files: normalized,
-      submitted_at: nowIso(),
-    };
-
-    const driver = reconciliation.submissions.driver;
-    const peer = reconciliation.submissions.peer;
-    if (!driver || !peer) {
-      reconciliation.reconciled = false;
-      delete reconciliation.files;
-      delete reconciliation.discrepancies;
-    } else {
-      const onlyDriver = driver.files.filter((file) => !peer.files.includes(file));
-      const onlyPeer = peer.files.filter((file) => !driver.files.includes(file));
-      if (onlyDriver.length === 0 && onlyPeer.length === 0) {
-        reconciliation.reconciled = true;
-        reconciliation.files = [...driver.files];
-        delete reconciliation.discrepancies;
-      } else {
-        reconciliation.reconciled = false;
-        delete reconciliation.files;
-        reconciliation.discrepancies = { only_driver: onlyDriver, only_peer: onlyPeer };
-      }
-    }
-    room.reconciliation = reconciliation;
+    if (room.forum) requireForumPhase(room, ['active', 'closing'], 'reconcile files');
+    recordReconciliation(room, member.role, sessionID, normalized);
     return room;
   });
 }
@@ -2699,10 +2824,178 @@ function requireForum(room: Room): PairForum {
   return room.forum;
 }
 
-function requireForumDiscussionsResolved(forum: PairForum): void {
-  if (forum.posts.some(p => (p.category === 'question' || p.category === 'clarification_needed') && !forum.posts.some(r => r.category === 'answer' && r.reply_to === p.id))) throw new Error('unanswered question or clarification');
-  if (forum.posts.some(p => p.category === 'escalate' && !forum.posts.some(r => r.category === 'escalation_resolved' && r.reply_to === p.id))) throw new Error('unresolved escalation');
-  if (forum.posts.some(p => p.category === 'escalation_candidate' && !forum.posts.some(r => (r.category === 'candidate_resolved' || r.category === 'escalate') && r.reply_to === p.id))) throw new Error('unresolved escalation candidate');
+/**
+ * A forum is usable only while both named participants are present and active.
+ * Membership alone is not presence: a returned or interrupted session keeps its
+ * seat in the room, but its availability is terminal.
+ */
+export function forumPhase(room: Room): ForumPhase {
+  if (room.status === 'closed') return 'closed';
+  if (room.status === 'aborted') return 'aborted';
+  const forum = room.forum;
+  if (!forum) return 'waiting_for_pair';
+  if (forum.final_requested) return 'closing';
+  const driver = room.members.some(member => member.role === 'driver');
+  const peer = room.members.some(member => member.role === 'peer');
+  if (!driver || !peer) return 'waiting_for_pair';
+  if (forum.stalls?.driver || forum.stalls?.peer) return 'stalled';
+  const driverActivity = participantActivity(room, 'driver');
+  const peerActivity = participantActivity(room, 'peer');
+  if (!driverActivity || !peerActivity) return 'waiting_for_pair';
+  if (driverActivity.availability !== 'active' || peerActivity.availability !== 'active') return 'stalled';
+  return 'active';
+}
+
+export function forumPairStatus(room: Room): {
+  phase: ForumPhase;
+  expected: ForumExpectation;
+  joined: Partial<Record<PairRole, string>>;
+  missing: PairRole[];
+  pendingStalls: Partial<Record<PairRole, ForumStall>>;
+  stalls: Partial<Record<PairRole, ForumStall>>;
+} {
+  const joined: Partial<Record<PairRole, string>> = {};
+  for (const member of room.members) {
+    if (member.role === 'driver' || member.role === 'peer') joined[member.role] = member.sessionID;
+  }
+  return {
+    phase: forumPhase(room),
+    expected: room.forum?.expected ?? {},
+    joined,
+    missing: (['driver', 'peer'] as PairRole[]).filter(role => !joined[role]),
+    pendingStalls: room.forum?.pending_stalls ?? {},
+    stalls: room.forum?.stalls ?? {},
+  };
+}
+
+export function forumRoomSummary(room: Room, full = false, root?: string): Record<string, unknown> {
+  const phase = room.forum ? forumPhase(room) : undefined;
+  const review = room.forum && root ? forumReviewState(root, room) : undefined;
+  if (full) return { ...room, ...(phase ? { phase, pair: forumPairStatus(room), review } : {}) };
+  return {
+    id: room.id,
+    status: room.status,
+    generation: room.generation,
+    goal: room.goal,
+    scope: room.scope,
+    authorized_paths: room.authorized_paths,
+    members: room.members,
+    activities: room.activities,
+    ...(phase ? { phase, pair: forumPairStatus(room) } : {}),
+    ...(room.stop ? { stop: room.stop } : {}),
+    ...(room.abort_reason ? { abort_reason: room.abort_reason, aborted_at: room.aborted_at } : {}),
+    reconciliation: room.reconciliation,
+    ...(review ? { review } : {}),
+    ...(room.forum ? {
+      forum: {
+        topics: room.forum.topics.map(({ snapshot: _snapshot, ...topic }) => topic),
+        final_requested: room.forum.final_requested,
+        final_fingerprint: room.forum.final_fingerprint ?? null,
+        expected: room.forum.expected,
+        pending_stalls: room.forum.pending_stalls,
+        stalls: room.forum.stalls,
+        post_count: room.forum.posts.length,
+        posts: room.forum.posts.slice(-5),
+      },
+    } : {}),
+    message_count: room.messages.length,
+    messages: room.messages.slice(-5),
+  };
+}
+
+function requireForumPhase(room: Room, allowed: ForumPhase[], action: string): void {
+  const phase = forumPhase(room);
+  if (!allowed.includes(phase)) {
+    throw new Error(`${action} requires pair phase ${allowed.join(' or ')}; current phase is ${phase}`);
+  }
+}
+
+function requireActiveMembers(room: Room, action: string): void {
+  for (const role of ['driver', 'peer'] as PairRole[]) {
+    const activity = participantActivity(room, role);
+    if (activity?.availability !== 'active') {
+      throw new Error(`${action} requires both participants active; ${role} is ${activity?.availability ?? 'missing'}`);
+    }
+  }
+}
+
+function requireActivePair(room: Room, action: string): void {
+  requireForumPhase(room, ['active'], action);
+  requireActiveMembers(room, action);
+}
+
+interface ForumBlocker {
+  code: string;
+  message: string;
+  actor: RoomRole;
+  next_action: string;
+  topic?: string;
+  reply_to?: string;
+  changed_paths?: string[];
+}
+
+class ForumGateError extends Error {
+  readonly code = 'REVIEW_BLOCKED';
+  constructor(readonly blockers: ForumBlocker[]) {
+    super(blockers.map(blocker => blocker.message).join('; '));
+  }
+}
+
+function forumDiscussionBlockers(forum: PairForum): ForumBlocker[] {
+  return forum.posts.flatMap(post => {
+    const replies = forum.posts.filter(reply => reply.reply_to === post.id);
+    if (['question', 'clarification_needed'].includes(post.category) && !replies.some(reply => reply.category === 'answer')) {
+      return [{ code: 'UNANSWERED_QUESTION', message: 'unanswered question or clarification', actor: post.role === 'driver' ? 'peer' : 'driver', next_action: 'resolve', topic: post.topic, reply_to: post.id } as ForumBlocker];
+    }
+    if (post.category === 'escalate' && !replies.some(reply => reply.category === 'escalation_resolved')) {
+      return [{ code: 'UNRESOLVED_ESCALATION', message: 'unresolved escalation', actor: 'host', next_action: 'resolve', topic: post.topic, reply_to: post.id } as ForumBlocker];
+    }
+    if (post.category === 'escalation_candidate' && !replies.some(reply => ['candidate_resolved', 'escalate'].includes(reply.category))) {
+      return [{ code: 'UNRESOLVED_CANDIDATE', message: 'unresolved escalation candidate', actor: post.role === 'driver' ? 'peer' : 'driver', next_action: 'resolve', topic: post.topic, reply_to: post.id } as ForumBlocker];
+    }
+    return [];
+  });
+}
+
+function forumReviewState(root: string, room: Room) {
+  const forum = requireForum(room);
+  const blockers: ForumBlocker[] = [];
+  const phase = forumPhase(room);
+  if (phase === 'waiting_for_pair' || phase === 'stalled') blockers.push({ code: 'PAIR_NOT_ACTIVE', message: `review requires an active pair; current phase is ${phase}`, actor: 'host', next_action: phase === 'waiting_for_pair' ? 'expect' : 'status' });
+  for (const topic of forum.topics) {
+    let stale = false;
+    if (topic.fingerprint) {
+      const current = forumSnapshot(root, topic.paths ?? room.authorized_paths);
+      const fingerprint = createHash('sha256').update(JSON.stringify(current)).digest('hex');
+      if (fingerprint !== topic.fingerprint) {
+        stale = true;
+        const changed = topic.snapshot ? [...new Set([...Object.keys(topic.snapshot), ...Object.keys(current)])].filter(path => topic.snapshot![path] !== current[path]).sort() : topic.paths ?? room.authorized_paths;
+        blockers.push({ code: 'REVIEW_STALE', message: `approved review is stale: authorized files changed for topic ${topic.id}`, topic: topic.id, actor: 'driver', next_action: 'ready_for_review', changed_paths: changed });
+      }
+    }
+    if (!stale && topic.status !== 'approved') blockers.push({ code: 'TOPIC_NOT_APPROVED', message: `topic ${topic.id} must be approved`, topic: topic.id, actor: topic.status === 'ready' ? 'peer' : 'driver', next_action: topic.status === 'ready' ? 'approved' : 'ready_for_review' });
+  }
+  for (const scenario of room.scope) {
+    if (!forum.topics.some(topic => topic.scenarios.includes(scenario))) blockers.push({ code: 'SCENARIO_UNCOVERED', message: `scenario needs approved review coverage: ${scenario}`, actor: 'driver', next_action: 'open' });
+  }
+  blockers.push(...forumDiscussionBlockers(forum));
+  const final: ForumBlocker[] = [...blockers];
+  if (!forum.final_requested) final.push({ code: 'FINISH_REQUIRED', message: 'driver must request final review', actor: 'driver', next_action: 'finish' });
+  else if (forum.final_fingerprint !== forumFingerprint(root, room.authorized_paths)) final.push({ code: 'FINAL_REVIEW_STALE', message: 'final review is stale: authorized files changed', actor: 'peer', next_action: 'changes_requested' });
+  for (const role of ['driver', 'peer'] as const) {
+    const member = room.members.find(member => member.role === role);
+    if (!room.reconciliation?.submissions[role] || room.reconciliation.submissions[role]?.sessionID !== member?.sessionID) final.push({ code: 'RECONCILIATION_REQUIRED', message: `${role} must reconcile files; submissions must come from current participants`, actor: role, next_action: 'reconcile' });
+  }
+  if (room.reconciliation && !room.reconciliation.reconciled) final.push({ code: 'RECONCILIATION_MISMATCH', message: 'both participants must reconcile matching files', actor: 'driver', next_action: 'changes' });
+  let nextActions: { actor: RoomRole; next_action: string; topic?: string }[];
+  const pairBlocker = blockers.find(blocker => blocker.code === 'PAIR_NOT_ACTIVE');
+  const staleFinal = final.find(blocker => blocker.code === 'FINAL_REVIEW_STALE');
+  if (room.status !== 'open') nextActions = [];
+  else if (pairBlocker) nextActions = [pairBlocker];
+  else if (phase === 'closing' && staleFinal) nextActions = [{ actor: 'peer', next_action: 'changes_requested', topic: blockers.find(blocker => blocker.code === 'REVIEW_STALE')?.topic ?? forum.topics[0]?.id }];
+  else if (phase === 'closing') nextActions = final.length ? final : [{ actor: 'peer', next_action: 'final_approved' }];
+  else nextActions = blockers.length ? blockers : [{ actor: 'driver', next_action: 'finish' }];
+  return { finish_blockers: blockers, final_blockers: final, next_actions: nextActions };
 }
 
 function forumSnapshot(root: string, paths: string[]): Record<string, string> {
@@ -2752,8 +3045,13 @@ export async function openForum(root: string, roomId: string, sessionID: string,
     const previous = readRoomFile(path);
     if (previous) {
       requireHost(previous, sessionID);
-      if (previous.status !== 'closed') throw new Error('a room already exists and is not closed');
-      if (previous.members.some(member => member.role !== 'host' &&
+      // `aborted` is terminal too: the host must be able to start the next
+      // feature in this session with its own goal and scope. `closed` still
+      // needs confirmed termination because its participants may be running.
+      if (previous.status !== 'closed' && previous.status !== 'aborted') {
+        throw new Error('a room already exists and is not closed or aborted');
+      }
+      if (previous.status === 'closed' && previous.members.some(member => member.role !== 'host' &&
         !(participantActivity(previous, member.role as PairRole)?.availability === 'finished' &&
           ['host', 'runtime'].includes(participantActivity(previous, member.role as PairRole)?.availability_source ?? '')))) {
         throw new Error('cannot start a new forum: previous participant termination is unconfirmed');
@@ -2770,6 +3068,76 @@ export async function openForum(root: string, roomId: string, sessionID: string,
     writeRoomAtomically(directory, path, room);
     return room;
   } finally { release(); }
+}
+
+export interface ForumPairExpectation {
+  driver_session: string;
+  peer_session: string;
+  wait_s?: number;
+}
+
+export type ForumPairStatus = ReturnType<typeof forumPairStatus>;
+
+/**
+ * Bind the two sessions the host just spawned and wait, briefly, for both to
+ * join. A session id that the host did not create cannot enter the pair, and a
+ * single participant never becomes a usable pair.
+ */
+export async function expectForumPair(
+  root: string,
+  roomId: string,
+  sessionID: string,
+  input: ForumPairExpectation,
+  session: Pick<RoomSessionApi, 'get'>,
+  timing: { now(): number; sleep(ms: number): Promise<void> } = { now: Date.now, sleep },
+): Promise<ForumPairStatus> {
+  const driver = requireNonEmptyRoomText(input.driver_session, 'driver_session');
+  const peer = requireNonEmptyRoomText(input.peer_session, 'peer_session');
+  if (driver === peer) throw new Error('driver and peer sessions must be different');
+  const initial = roomState(root, roomId);
+  requireHost(initial, sessionID);
+  requireForum(initial);
+  requireRoomOpen(initial, 'bind the pair');
+  const [driverInfo, peerInfo] = await Promise.all([
+    session.get({ sessionID: driver }),
+    session.get({ sessionID: peer }),
+  ]);
+  if (driverInfo.id !== driver) throw new Error('runtime does not know the driver session');
+  if (peerInfo.id !== peer) throw new Error('runtime does not know the peer session');
+  for (const [role, info, expected] of [['driver', driverInfo, driver], ['peer', peerInfo, peer]] as const) {
+    if (info.parentID !== undefined && info.parentID !== sessionID) {
+      throw new Error(`${role} session ${expected} is not a child of this host`);
+    }
+    const joined = initial.members.find(member => member.role === role);
+    if (joined && joined.sessionID !== expected) {
+      throw new Error(`${role} already joined with a different session; restart the room before rebinding`);
+    }
+    const activity = participantActivity(initial, role);
+    if (joined && joined.sessionID === expected && activity && activity.availability !== 'active') {
+      throw new Error(`${role} is ${activity.availability}; replace it or restart the room before binding`);
+    }
+  }
+  const waitSeconds = Math.min(Math.max(input.wait_s ?? PAIR_JOIN_WAIT_DEFAULT_S, 0), PAIR_JOIN_WAIT_MAX_S);
+  const deadline = timing.now() + waitSeconds * 1000;
+  await mutateRoom(root, roomId, room => {
+    requireHost(room, sessionID);
+    requireForum(room);
+    requireRoomOpen(room, 'bind the pair');
+    room.forum!.expected = { driver, peer, deadline };
+    const current = room.members.find(member => member.role === 'driver');
+    if (current && current.sessionID !== driver) throw new Error('driver joined with a different session');
+    const currentPeer = room.members.find(member => member.role === 'peer');
+    if (currentPeer && currentPeer.sessionID !== peer) throw new Error('peer joined with a different session');
+    return room;
+  });
+  for (;;) {
+    const current = roomState(root, roomId);
+    const status = forumPairStatus(current);
+    if (status.phase === 'active' || status.phase === 'stalled') return status;
+    const remaining = deadline - timing.now();
+    if (remaining <= 0) return status;
+    await timing.sleep(Math.min(INBOX_POLL_MS, remaining));
+  }
 }
 
 export function forumChanges(root: string, roomId: string, sessionID: string): string[] {
@@ -2790,6 +3158,7 @@ export async function forumOpenTopics(root: string, roomId: string, sessionID: s
     const member = requireMember(room, sessionID);
     if (member.role === 'host') throw new Error('only the driver or peer may open topics');
     requireRoomOpen(room, 'open topics');
+    requireActivePair(room, 'open topics');
     const forum = requireForum(room);
     const ids = new Set(forum.topics.map(t => t.id));
     const created = topics.map(input => {
@@ -2797,6 +3166,7 @@ export async function forumOpenTopics(root: string, roomId: string, sessionID: s
       const title = requireNonEmptyRoomText(input.title, 'topic title');
       if (ids.has(id)) throw new Error(`topic "${id}" already exists`);
       if (!Array.isArray(input.scenarios) || input.scenarios.some(s => !room.scope.includes(s))) throw new Error('topic scenarios must belong to the room scope');
+      if (room.authorized_paths.length > 0 && input.paths === undefined) throw new Error('topic paths are required: list the files and dependencies this review covers, within authorized paths');
       if (input.paths !== undefined && (!Array.isArray(input.paths) || (input.paths.length === 0 && room.authorized_paths.length > 0) || input.paths.some(path => typeof path !== 'string' || path.trim() === '' || !room.authorized_paths.some(allowed => {
         const remainder = relative(resolve(root, allowed), resolve(root, path));
         return remainder !== '..' && !remainder.startsWith(`..${sep}`) && !isAbsolute(remainder);
@@ -2814,7 +3184,7 @@ export async function forumOpenTopics(root: string, roomId: string, sessionID: s
   });
 }
 
-const FORUM_CATEGORIES: ForumCategory[] = ['comment', 'question', 'answer', 'ready_for_review', 'approved', 'changes_requested', 'clarification_needed', 'escalation_candidate', 'candidate_resolved', 'escalate', 'escalation_resolved', 'final_approved'];
+const FORUM_CATEGORIES: (ForumCategory | 'resolve')[] = ['comment', 'question', 'answer', 'ready_for_review', 'approved', 'changes_requested', 'clarification_needed', 'escalation_candidate', 'candidate_resolved', 'escalate', 'escalation_resolved', 'final_approved', 'resolve'];
 
 const FORUM_DISCUSSION_CATEGORIES: ForumCategory[] = ['comment', 'question', 'answer', 'changes_requested', 'clarification_needed', 'escalation_candidate', 'candidate_resolved', 'escalate', 'escalation_resolved'];
 
@@ -2842,7 +3212,7 @@ export async function forumReadTopic(root: string, roomId: string, sessionID: st
     const discussion = forum.posts.filter(post => post.topic === topicId && FORUM_DISCUSSION_CATEGORIES.includes(post.category));
     const bytes = discussion.reduce((total, post) => total + Buffer.byteLength(post.message, 'utf8'), 0);
     const warning = discussion.length >= 20 || bytes >= 32768;
-    return { topic, posts: takeForumPosts(forum, sessionID, topicId, all), discussion: {
+    return { topic, posts: takeForumPosts(forum, sessionID, topicId, all), pair: forumPairStatus(room), discussion: {
       count: discussion.length, bytes, warning,
       ...(warning ? { guidance: 'Keep discussion focused: resolve the remaining point or consider an escalation candidate if agreement is not possible. This is not a limit.' } : {}),
     } };
@@ -2863,13 +3233,23 @@ export async function forumPost(root: string, roomId: string, sessionID: string,
     }
     requireRoomOpen(room, 'post');
     const added: ForumPost[] = [];
-    for (const [index, item] of input.posts.entries()) {
+    for (const [index, original] of input.posts.entries()) {
+      const target = forum.posts.find(post => post.id === original.reply_to && post.topic === original.topic);
+      const category = original.category === 'resolve' ? ({ question: 'answer', clarification_needed: 'answer', escalation_candidate: 'candidate_resolved', escalate: 'escalation_resolved' } as const)[target?.category as 'question' | 'clarification_needed' | 'escalation_candidate' | 'escalate'] : original.category;
+      if (!category) throw new Error('resolve must reply to a question, clarification, candidate or escalation');
+      const item = { ...original, category };
       const topic = forum.topics.find(t => t.id === item.topic);
       if (!topic) throw new Error(`unknown topic "${item.topic}"`);
       if (!FORUM_CATEGORIES.includes(item.category)) throw new Error('invalid post category');
       const message = requireNonEmptyRoomText(item.message, 'message');
       if (item.reply_to && !forum.posts.some(p => p.id === item.reply_to && p.topic === topic.id)) throw new Error('reply_to must refer to a post in this topic');
       if (item.category === 'final_approved' && index !== input.posts.length - 1) throw new Error('final approval must be the last post in a batch');
+      const phase = forumPhase(room);
+      if (member.role !== 'host') {
+        if (phase === 'waiting_for_pair') throw new Error('the pair is not complete; both participants must join before posting');
+        if (phase === 'stalled' && item.category !== 'escalate') throw new Error('the pair is stalled; only an escalation may be posted');
+        if (phase === 'closing' && ['ready_for_review', 'approved', 'clarification_needed', 'question', 'escalation_candidate', 'candidate_resolved'].includes(item.category)) throw new Error('final review is in progress; the peer may request changes for an in-scope correction');
+      }
       if (['candidate_resolved', 'escalation_resolved'].includes(item.category)) {
         const target = forum.posts.find(p => p.id === item.reply_to && p.topic === topic.id);
         const expected = item.category === 'candidate_resolved' ? 'escalation_candidate' : 'escalate';
@@ -2877,29 +3257,39 @@ export async function forumPost(root: string, roomId: string, sessionID: string,
       }
       if (item.category === 'ready_for_review') {
         if (member.role !== 'driver') throw new Error('only the driver may request review');
-        topic.fingerprint = forumFingerprint(root, topic.paths ?? room.authorized_paths);
-        topic.revision += 1; topic.status = 'ready'; delete forum.final_requested; delete room.reconciliation;
+        requireActivePair(room, 'request review');
+        topic.snapshot = forumSnapshot(root, topic.paths ?? room.authorized_paths);
+        topic.fingerprint = createHash('sha256').update(JSON.stringify(topic.snapshot)).digest('hex');
+        topic.revision += 1; topic.status = 'ready'; delete forum.final_requested; delete forum.final_fingerprint; delete room.reconciliation;
       }
       if (['approved', 'changes_requested', 'clarification_needed'].includes(item.category)) {
         if (member.role !== 'peer') throw new Error('only the peer may review');
-        if (topic.status !== 'ready') throw new Error('topic is not ready for review');
+        const finalFinding = phase === 'closing' && item.category === 'changes_requested';
+        if (finalFinding) requireActiveMembers(room, 'request final corrections');
+        else requireActivePair(room, 'review a topic');
+        if (!finalFinding && topic.status !== 'ready') throw new Error('topic is not ready for review');
         if (item.revision !== topic.revision) throw new Error(`stale review: current revision is ${topic.revision}`);
-        if (topic.fingerprint !== forumFingerprint(root, topic.paths ?? room.authorized_paths)) throw new Error('review is stale: authorized files changed');
+        if (!finalFinding && topic.fingerprint !== forumFingerprint(root, topic.paths ?? room.authorized_paths)) throw new Error('review is stale: authorized files changed');
       }
       if (item.category === 'approved') {
         if (!item.evidence || !item.evidence.command?.trim() || item.evidence.exit_code !== 0 || !item.evidence.output?.trim()) throw new Error('approval requires a passing independent command and output');
         topic.status = 'approved';
       }
-      if (item.category === 'changes_requested') topic.status = 'open';
+      if (item.category === 'changes_requested') {
+        topic.status = 'open';
+        delete forum.final_requested;
+        delete forum.final_fingerprint;
+        delete room.reconciliation;
+      }
       if (forum.final_requested && ['question', 'changes_requested', 'clarification_needed', 'escalation_candidate', 'escalate'].includes(item.category)) delete forum.final_requested;
       if (item.category === 'escalation_resolved' && member.role !== 'host') throw new Error('only the host may resolve an escalation');
       if (item.category === 'final_approved') {
         if (member.role !== 'peer' || !forum.final_requested) throw new Error('only the peer may approve the requested final review');
+        requireForumPhase(room, ['closing'], 'final approval');
+        requireActiveMembers(room, 'final approval');
         if (!item.evidence || !item.evidence.command?.trim() || item.evidence.exit_code !== 0 || !item.evidence.output?.trim()) throw new Error('final approval requires a passing suite command and output');
-        if (!room.reconciliation?.reconciled) throw new Error('both participants must reconcile files before final approval');
-        if (forum.topics.some(t => t.status !== 'approved')) throw new Error('all topics must be approved');
-        requireForumDiscussionsResolved(forum);
-        if (forum.final_fingerprint !== forumFingerprint(root, room.authorized_paths)) throw new Error('final review is stale: authorized files changed');
+        const blockers = forumReviewState(root, room).final_blockers;
+        if (blockers.length) throw new ForumGateError(blockers);
         room.status = 'closed';
       }
       const post: ForumPost = { id: randomUUID(), seq: room.next_seq, topic: topic.id, category: item.category, message, role: member.role, revision: topic.revision, ...(item.reply_to ? { reply_to: item.reply_to } : {}), ...(item.evidence ? { evidence: item.evidence } : {}) };
@@ -2911,20 +3301,123 @@ export async function forumPost(root: string, roomId: string, sessionID: string,
   });
 }
 
-export async function forumRequestFinish(root: string, roomId: string, sessionID: string, summary: string): Promise<Room> {
+async function wakeHostForEscalation(
+  root: string,
+  roomId: string,
+  sessionID: string,
+  posts: ForumPost[],
+  session: RoomSessionApi,
+): Promise<void> {
+  const escalations = posts.filter(post => post.category === 'escalate');
+  if (escalations.length === 0 || typeof session.synthetic !== 'function') return;
+  const room = roomState(root, roomId);
+  const host = room.members.find(member => member.role === 'host');
+  if (!host || host.sessionID === sessionID) return;
+  const alreadyNotified = new Set(room.forum?.notified_escalations ?? []);
+  const pending = escalations.filter(post => !alreadyNotified.has(post.id));
+  if (pending.length === 0) return;
+  await mutateRoom(root, roomId, current => {
+    current.forum!.notified_escalations ??= [];
+    for (const post of pending) {
+      if (!current.forum!.notified_escalations.includes(post.id)) current.forum!.notified_escalations.push(post.id);
+    }
+    return current;
+  });
+  const first = pending[0]!;
+  await session.synthetic({
+    sessionID: host.sessionID,
+    text: `ESCALATION: ${first.role} posted an escalation in room ${roomId} generation ${room.generation ?? 1}, topic "${first.topic}": ${first.message.slice(0, 500)}. Run pas_pair_room status and pas_pair_topic read, then post escalation_resolved replying to post ${first.id}, or interrupt/restart.`,
+    description: 'PAS pairing escalation',
+    delivery: 'steer',
+    resume: true,
+  });
+}
+
+function forumPendingForClose(room: Room): string[] {
+  const forum = requireForum(room);
+  const pending: string[] = [];
+  for (const topic of forum.topics) {
+    if (topic.status !== 'approved') pending.push(`topic:${topic.id}`);
+  }
+  if (!forum.final_requested) {
+    pending.push('finish');
+    return pending;
+  }
+  const reconciliation = room.reconciliation;
+  if (!reconciliation?.submissions.driver) pending.push('reconcile:driver');
+  if (!reconciliation?.submissions.peer) pending.push('reconcile:peer');
+  if (!reconciliation?.reconciled) pending.push('reconciliation');
+  return pending;
+}
+
+/**
+ * A participant that returns while the room is open leaves its partner
+ * waiting for messages that will never arrive. Wake the live partner once per
+ * return so it reports the missing state instead of timing out in silence.
+ */
+async function wakePartnerForCompletion(
+  root: string,
+  roomId: string,
+  returningRole: PairRole,
+  returningSessionID: string,
+  session: RoomSessionApi,
+): Promise<void> {
+  const initial = roomState(root, roomId);
+  if (initial.status !== 'open' || !initial.forum || typeof session.synthetic !== 'function') return;
+  const otherRole: PairRole = returningRole === 'driver' ? 'peer' : 'driver';
+  const other = initial.members.find(member => member.role === otherRole);
+  if (!other) return;
+  const key = `${initial.generation ?? 1}:${returningRole}:${returningSessionID}`;
+  if ((initial.forum?.notified_partner_finished ?? []).includes(key)) return;
+  if (participantActivity(initial, otherRole)?.availability !== 'active') return;
+  const room = await mutateRoom(root, roomId, current => {
+    current.forum!.notified_partner_finished ??= [];
+    if (!current.forum!.notified_partner_finished.includes(key)) current.forum!.notified_partner_finished.push(key);
+    return current;
+  });
+  if (room.status !== 'open') return;
+  if (participantActivity(room, otherRole)?.availability !== 'active') return;
+  const pending = forumPendingForClose(room);
+  await session.synthetic({
+    sessionID: other.sessionID,
+    text: `PARTNER_FINISHED: ${returningRole} session ${returningSessionID} returned before the room closed${pending.length > 0 ? `; pending: ${pending.join(', ')}` : ''}. Stop waiting now. Report the exact missing state and return; the host will recover the pair. Do not close the room alone.`,
+    description: 'PAS pairing partner finished',
+    delivery: 'steer',
+    resume: true,
+  });
+}
+
+export async function forumRequestFinish(
+  root: string,
+  roomId: string,
+  sessionID: string,
+  summary: string,
+  files?: string[],
+): Promise<Room> {
+  const normalized = files === undefined ? undefined : normalizeRoomFileList(files);
   return mutateRoom(root, roomId, room => {
     const member = requireMember(room, sessionID);
     if (member.role !== 'driver') throw new Error('only the driver may request final review');
     requireRoomOpen(room, 'request final review');
+    requireActivePair(room, 'final review');
     const forum = requireForum(room);
-    if (forum.topics.length === 0 || forum.topics.some(t => t.status !== 'approved')) throw new Error('all topics must be approved before final review');
+    const blockers = forumReviewState(root, room).finish_blockers;
+    if (blockers.length) throw new ForumGateError(blockers);
     const currentFingerprint = forumFingerprint(root, room.authorized_paths);
-    if (forum.topics.some(t => t.fingerprint !== forumFingerprint(root, t.paths ?? room.authorized_paths))) throw new Error('approved review is stale: authorized files changed');
-    if (room.scope.some(scenario => !forum.topics.some(t => t.status === 'approved' && t.scenarios.includes(scenario)))) throw new Error('all scenarios need approved review coverage');
-    requireForumDiscussionsResolved(forum);
+    if (normalized && room.authorized_paths.length > 0) {
+      const changes = forumChanges(root, roomId, sessionID);
+      const missing = changes.filter(file => !normalized.includes(file));
+      const extra = normalized.filter(file => !changes.includes(file));
+      if (missing.length > 0 || extra.length > 0) {
+        throw new Error(`finish files must match the room changeset. Expected: ${changes.join(', ') || '(empty)'}. Missing: ${missing.join(', ') || '(none)'}. Extra: ${extra.join(', ') || '(none)'}.`);
+      }
+    }
+    // The peer must reconcile after the final suite; a submission from before
+    // finish is not accepted as the final audit.
+    clearPeerReconciliation(room);
+    if (normalized) recordReconciliation(room, 'driver', sessionID, normalized);
     forum.final_requested = true;
     forum.final_fingerprint = currentFingerprint;
-    delete room.reconciliation;
     room.messages.push({ id: randomUUID(), seq: room.next_seq++, role: member.role, sessionID, to: 'peer', unit: '', type: 'ready_for_final_audit', kind: 'discussion', body: `final review requested: ${requireNonEmptyRoomText(summary, 'summary')}`, created_at: nowIso(), read_by: [member.role] });
     return room;
   });
@@ -2940,17 +3433,26 @@ export async function forumReplaceParticipant(root: string, roomId: string, sess
     const member = room.members.find(m => m.role === input.role && m.sessionID === input.participant_session);
     if (!member) throw new Error('participant session does not match the current role');
     const activity = participantActivity(room, input.role);
-    if (activity?.availability !== 'finished' || !['host', 'runtime'].includes(activity.availability_source ?? '')) throw new Error('participant completion is not confirmed');
+    const finished = activity?.availability === 'finished' && ['host', 'runtime'].includes(activity.availability_source ?? '');
+    const stopped = activity?.availability === 'unavailable' && ['runtime', 'killswitch', 'host'].includes(activity.availability_source ?? '');
+    if (!finished && !stopped) throw new Error('participant completion is not confirmed');
     room.members = room.members.filter(m => m !== member);
     room.retired_sessions = [...new Set([...(room.retired_sessions ?? []), member.sessionID])];
     if (room.activities) delete room.activities[input.role];
-    insertRoomEvent(room, sessionID, 'host', 'participant_replaced', `${input.role} ${member.sessionID} retired: ${reason}; replacement must join`);
+    if (room.forum?.stalls) delete room.forum.stalls[input.role];
+    if (room.forum?.pending_stalls) delete room.forum.pending_stalls[input.role];
+    if (room.forum?.expected) delete room.forum.expected[input.role];
+    insertRoomEvent(room, sessionID, 'host', 'participant_replaced', `${input.role} ${member.sessionID} retired: ${reason}; replacement must join and be bound with expect`);
     return room;
   });
 }
 
 export const internals = {
   openForum,
+  expectForumPair,
+  forumPhase,
+  forumPairStatus,
+  forumRoomSummary,
   forumChanges,
   forumReadTopic,
   forumOpenTopics,
@@ -2965,6 +3467,7 @@ export const internals = {
   waitForUpdates,
   setParticipantActivity,
   applyParticipantLifecycle,
+  promoteParticipantStall,
   stopRoom,
   roomUpdateCursor,
   INBOX_DEFAULT_WAIT_S,
@@ -3016,6 +3519,13 @@ function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 }
 
+const LEGACY_ROOM_TOOLS = new Set([
+  'pas_room_join', 'pas_room_send', 'pas_room_inbox', 'pas_room_activity',
+  'pas_room_evidence', 'pas_room_close', 'pas_room_end', 'pas_room_reconcile',
+  'pas_room_ack', 'pas_room_audit', 'pas_room_state', 'pas_room_stop',
+  'pas_room_reset', 'pas_room_abort', 'pas_room_resolve_escalation',
+]);
+
 function createRoomToolExecute(
   defaultDirectory: string,
   session: RoomSessionApi,
@@ -3036,6 +3546,12 @@ function createRoomToolExecute(
         throw new Error('the session API is unavailable; room tools cannot resolve the room');
       }
       const roomId = await roomIdForSession(session, sessionID);
+      if (LEGACY_ROOM_TOOLS.has(name)) {
+        const current = readRoomFile(roomFilePath(workspace, roomId));
+        if (current?.forum) {
+          throw new Error(`${name} is for legacy rooms; this room uses the pairing forum. Use the pas_pair_* tools instead.`);
+        }
+      }
       if (!['pas_pair_feed', 'pas_pair_room', 'pas_pair_topic', 'pas_room_inbox', 'pas_room_state', 'pas_room_transcript', 'pas_room_activity', 'pas_room_join',
         'pas_room_stop', 'pas_room_abort', 'pas_room_reset', 'pas_room_resolve_escalation'].includes(name)) {
         const current = readRoomFile(roomFilePath(workspace, roomId));
@@ -3045,8 +3561,10 @@ function createRoomToolExecute(
         }
       }
       const content = await handler(workspace, roomId, sessionID, asInputRecord(input), context);
+      if (name.startsWith('pas_pair_')) return { content: JSON.stringify({ ok: true, workspace, data: JSON.parse(content) }) };
       return { content: `${content}\nWorkspace: ${workspace}` };
     } catch (error) {
+      if (name.startsWith('pas_pair_')) return { content: JSON.stringify({ ok: false, workspace, code: error instanceof ForumGateError ? error.code : 'INVALID_OPERATION', message: describeError(error), ...(error instanceof ForumGateError ? { blockers: error.blockers } : {}) }) };
       return { content: `ERROR: ${describeError(error)}\nWorkspace: ${workspace}` };
     }
   };
@@ -3065,8 +3583,9 @@ interface SessionHookApi {
 
 interface PluginContext {
   location?: { directory?: string };
+  options?: Record<string, unknown>;
   session: RoomSessionApi & Partial<SessionHookApi>;
-  event?: { subscribe(options: { types: string[]; signal: AbortSignal }): AsyncIterable<{ type: string; created: number; data: { sessionID: string }; location?: { directory?: string } }> };
+  event?: { subscribe(options: { types: string[]; signal: AbortSignal }): AsyncIterable<{ type: string; created: number; data: { sessionID: string; reason?: string }; location?: { directory?: string } }> };
   tool: {
     transform(callback: (editor: { add(tool: RegisteredTool): void }) => void): unknown;
   };
@@ -3088,9 +3607,61 @@ export default {
 
     const execute = createToolExecute(defaultDirectory);
     const lifecycleController = new AbortController();
+    const stallTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    const stallGrace = typeof ctx.options?.pair_stall_grace_ms === 'number' && Number.isFinite(ctx.options.pair_stall_grace_ms)
+      ? Math.max(0, ctx.options.pair_stall_grace_ms) : PAIR_STALL_GRACE_MS;
+    const scheduleStallWake = (roomId: string, sessionID: string, role: PairRole, reason: string): void => {
+      const key = `${roomId}:${sessionID}`;
+      if (stallTimers.has(key)) return;
+      const timer = setTimeout(() => {
+        stallTimers.delete(key);
+        void (async () => {
+          try {
+            const promoted = await promoteParticipantStall(defaultDirectory, roomId, sessionID, Date.now());
+            if (!promoted) return;
+            const room = readRoomFile(roomFilePath(defaultDirectory, roomId));
+            if (!room || room.status !== 'open') return;
+            const shouldNotify = await mutateRoom(defaultDirectory, roomId, current => {
+              const stalls = current.forum?.stalls;
+              if (!stalls || !Object.values(stalls).some(stall => stall && !stall.notified)) return false;
+              for (const candidate of ['driver', 'peer'] as PairRole[]) {
+                if (stalls[candidate]) stalls[candidate]!.notified = true;
+              }
+              return true;
+            });
+            if (!shouldNotify) return;
+            const host = room.members.find(candidate => candidate.role === 'host');
+            if (!host || typeof ctx.session.synthetic !== 'function') return;
+            const driver = room.members.find(candidate => candidate.role === 'driver');
+            const peer = room.members.find(candidate => candidate.role === 'peer');
+            const driverActive = participantActivity(room, 'driver')?.availability === 'active';
+            const peerActive = participantActivity(room, 'peer')?.availability === 'active';
+            const generation = room.generation ?? 1;
+            const recommendation = peerActive && !driverActive
+              ? `replace the driver: pas_pair_room { action: 'replace', target: 'driver', participant_session: '${driver?.sessionID ?? '<driver>'}', generation: ${generation}, reason: '<reason>' }`
+              : driverActive && !peerActive
+                ? `replace the peer: pas_pair_room { action: 'replace', target: 'peer', participant_session: '${peer?.sessionID ?? '<peer>'}', generation: ${generation}, reason: '<reason>' }`
+                : !driverActive && !peerActive
+                  ? `interrupt both, then restart: pas_pair_room { action: 'interrupt', target: 'both', generation: ${generation}, reason: '<reason>' } then { action: 'restart', generation: ${generation}, reason: '<reason>' }`
+                  : 'inspect pas_pair_room status and decide; do not resume the driver alone';
+            await ctx.session.synthetic({
+              sessionID: host.sessionID,
+              text: `PAIR_BROKEN: ${role} session ${sessionID} is unavailable (${reason}); room ${roomId} generation ${generation} is stalled. ${recommendation}. The driver must not continue alone.`,
+              description: 'PAS pairing watchdog',
+              delivery: 'steer',
+              resume: true,
+            });
+          } catch { /* A watchdog must never break the plugin or the room. */ }
+        })();
+      }, stallGrace);
+      stallTimers.set(key, timer);
+    };
     if (ctx.event?.subscribe) {
+      // `succeeded` is per step and `failed` also fires for transient step
+      // failures; neither proves that the participant stopped. Only an
+      // explicit interruption is a stop candidate.
       const events = ctx.event.subscribe({
-        types: ['session.execution.started'],
+        types: ['session.execution.started', 'session.execution.interrupted'],
         signal: lifecycleController.signal,
       });
       void (async () => {
@@ -3099,10 +3670,24 @@ export default {
             if (lifecycleController.signal.aborted) break;
             if (event.location?.directory && resolve(event.location.directory) !== resolve(defaultDirectory)) continue;
             try {
-              if (event.type !== 'session.execution.started') continue;
-              const roomId = await boundedRequest(() => roomIdForSession(ctx.session, event.data.sessionID), SESSION_READ_TIMEOUT_MS);
+              const sessionID = event.data.sessionID;
+              const roomId = await boundedRequest(() => roomIdForSession(ctx.session, sessionID), SESSION_READ_TIMEOUT_MS);
               if (lifecycleController.signal.aborted) break;
-              await applyParticipantLifecycle(defaultDirectory, roomId, event.data.sessionID, 'active', event.created);
+              if (event.type === 'session.execution.started') {
+                const pending = stallTimers.get(`${roomId}:${sessionID}`);
+                if (pending) clearTimeout(pending);
+                stallTimers.delete(`${roomId}:${sessionID}`);
+                await applyParticipantLifecycle(defaultDirectory, roomId, sessionID, 'active', event.created);
+                continue;
+              }
+              if (event.type !== 'session.execution.interrupted') continue;
+              const room = readRoomFile(roomFilePath(defaultDirectory, roomId));
+              const member = room && findMember(room, sessionID);
+              const reason = `runtime interrupted (${event.data.reason ?? 'unknown'})`;
+              const created = await applyParticipantLifecycle(defaultDirectory, roomId, sessionID, 'unavailable', event.created, reason);
+              if (created && member && (member.role === 'driver' || member.role === 'peer')) {
+                scheduleStallWake(roomId, sessionID, member.role, reason);
+              }
             } catch { /* Ignore unrelated sessions and stale/unavailable rooms. */ }
           }
         } catch { /* Subscription cancellation must not break the plugin. */ }
@@ -3130,45 +3715,85 @@ export default {
         });
       };
 
-      registerRoomTool('pas_pair_room', 'Create, join or inspect a pairing forum; request final review or use host recovery controls.', {
+      registerRoomTool('pas_pair_room', 'Manage a pairing forum. Returns JSON {ok, workspace, data}; status reports review blockers and role-specific next_actions, finish requests the peer final audit.', {
         type: 'object', properties: {
-          action: { enum: ['create', 'join', 'status', 'changes', 'finish', 'reconcile', 'report_completion', 'replace', 'interrupt', 'cancel', 'restart'] },
+          action: { enum: ['create', 'join', 'expect', 'status', 'changes', 'finish', 'reconcile', 'report_completion', 'replace', 'interrupt', 'cancel', 'restart'] },
           goal: { type: 'string' }, scope: { type: 'array', items: { type: 'string' } },
           authorized_paths: { type: 'array', items: { type: 'string' } }, role: { enum: ['driver', 'peer'] },
+          driver_session: { type: 'string' }, peer_session: { type: 'string' }, wait_s: { type: 'number' }, full: { type: 'boolean' },
           summary: { type: 'string' }, files: { type: 'array', items: { type: 'string' } }, reason: { type: 'string' }, target: { enum: ['driver', 'peer', 'both'] }, participant_session: { type: 'string' }, generation: { type: 'integer' },
         }, required: ['action'], additionalProperties: false,
       }, async (root, roomId, sessionID, input) => {
         switch (input.action) {
-          case 'create': return JSON.stringify(await openForum(root, roomId, sessionID, { goal: String(input.goal ?? ''), scope: stringList(input.scope), authorized_paths: stringList(input.authorized_paths) }));
+          case 'create': return JSON.stringify(forumRoomSummary(await openForum(root, roomId, sessionID, { goal: String(input.goal ?? ''), scope: stringList(input.scope), authorized_paths: stringList(input.authorized_paths) }), false, root));
           case 'join': {
             if (input.role !== 'driver' && input.role !== 'peer') throw new Error('role must be driver or peer');
             requireForum(roomState(root, roomId));
             const room = await joinRoom(root, roomId, sessionID, { role: input.role });
-            requireForum(room); return JSON.stringify(room);
+            return JSON.stringify({ room: forumRoomSummary(room, false, root), phase: forumPhase(room), pair: forumPairStatus(room) });
           }
-          case 'status': { const room = roomState(root, roomId); requireMember(room, sessionID); return JSON.stringify(room); }
+          case 'expect': return JSON.stringify(await expectForumPair(root, roomId, sessionID, {
+            driver_session: String(input.driver_session ?? ''),
+            peer_session: String(input.peer_session ?? ''),
+            ...(typeof input.wait_s === 'number' ? { wait_s: input.wait_s } : {}),
+          }, ctx.session));
+          case 'status': {
+            const room = roomState(root, roomId);
+            requireMember(room, sessionID);
+            return JSON.stringify(forumRoomSummary(room, input.full === true, root));
+          }
           case 'changes': return JSON.stringify(forumChanges(root, roomId, sessionID));
-          case 'finish': return JSON.stringify(await forumRequestFinish(root, roomId, sessionID, String(input.summary ?? '')));
-          case 'reconcile': return JSON.stringify(await reconcileFiles(root, roomId, sessionID, { files: input.files as string[] }));
+          case 'finish': return JSON.stringify(forumRoomSummary(await forumRequestFinish(
+            root,
+            roomId,
+            sessionID,
+            String(input.summary ?? ''),
+            Array.isArray(input.files) ? input.files as string[] : undefined,
+          ), false, root));
+          case 'reconcile': return JSON.stringify(forumRoomSummary(await reconcileFiles(root, roomId, sessionID, { files: input.files as string[] }), false, root));
           case 'report_completion': {
             const snapshot = roomState(root, roomId); requireHost(snapshot, sessionID); requireForum(snapshot);
             if ((input.target !== 'driver' && input.target !== 'peer') || typeof input.participant_session !== 'string' || input.generation !== (snapshot.generation ?? 1) || !snapshot.members.some(m => m.role === input.target && m.sessionID === input.participant_session)) throw new Error('completion requires the exact current participant and generation');
             const info = await boundedRequest(signal => ctx.session.get({ sessionID: input.participant_session as string }, { signal }), SESSION_READ_TIMEOUT_MS);
             if (info.id !== input.participant_session || info.time?.idle === undefined || (info.time.busy !== undefined && info.time.busy > info.time.idle)) throw new Error('runtime does not confirm participant completion');
-            return JSON.stringify(await setParticipantActivity(root, roomId, sessionID, { state: 'finished', target: input.target, participant_session: input.participant_session, expected_generation: input.generation as number, reason: String(input.reason ?? '') }, info.time.idle));
+            const room = await setParticipantActivity(root, roomId, sessionID, { state: 'finished', target: input.target, participant_session: input.participant_session, expected_generation: input.generation as number, reason: String(input.reason ?? '') }, info.time.idle);
+            await wakePartnerForCompletion(root, roomId, input.target, input.participant_session, ctx.session);
+            const incomplete = room.status === 'open'
+              ? {
+                incomplete_return: {
+                  role: input.target,
+                  sessionID: input.participant_session,
+                  phase: forumPhase(room),
+                  pending: forumPendingForClose(room),
+                },
+              }
+              : {};
+            return JSON.stringify({ ...forumRoomSummary(room, false, root), ...incomplete });
           }
           case 'replace': {
-            if ((input.target !== 'driver' && input.target !== 'peer') || typeof input.participant_session !== 'string' || typeof input.generation !== 'number') throw new Error('replacement requires target, participant_session and generation');
-            return JSON.stringify(await forumReplaceParticipant(root, roomId, sessionID, { role: input.target, participant_session: input.participant_session, generation: input.generation, reason: String(input.reason ?? '') }));
+            const snapshot = roomState(root, roomId);
+            requireHost(snapshot, sessionID);
+            requireForum(snapshot);
+            const participantSession = typeof input.participant_session === 'string' ? input.participant_session : '';
+            const member = snapshot.members.find(candidate => candidate.sessionID === participantSession);
+            const target = input.target ?? member?.role;
+            if ((target !== 'driver' && target !== 'peer') || participantSession === '' || typeof input.generation !== 'number') throw new Error('replacement requires target (or the exact participant_session) and generation');
+            return JSON.stringify(forumRoomSummary(await forumReplaceParticipant(root, roomId, sessionID, { role: target, participant_session: participantSession, generation: input.generation, reason: String(input.reason ?? '') })));
           }
           case 'interrupt': return JSON.stringify(await stopRoom(root, roomId, sessionID, { reason: String(input.reason ?? ''), target: String(input.target ?? 'both'), ...(typeof input.generation === 'number' ? { expected_generation: input.generation } : {}) }, ctx.session));
           case 'cancel': return JSON.stringify(await abortRoom(root, roomId, sessionID, { reason: String(input.reason ?? '') }));
-          case 'restart': return JSON.stringify(await resetRoom(root, roomId, sessionID, { reason: String(input.reason ?? '') }));
+          case 'restart': {
+            const snapshot = roomState(root, roomId);
+            requireHost(snapshot, sessionID);
+            if (typeof input.generation === 'number' && input.generation !== (snapshot.generation ?? 1)) throw new Error('restart generation is stale');
+            const reset = await resetRoom(root, roomId, sessionID, { reason: String(input.reason ?? '') });
+            return JSON.stringify({ room: forumRoomSummary(reset.room), archivedPath: reset.archivedPath });
+          }
           default: throw new Error('invalid room action');
         }
       });
 
-      registerRoomTool('pas_pair_topic', 'Open or list topics; read returns unread posts for this session, or all posts with all=true.', {
+        registerRoomTool('pas_pair_topic', 'Open scoped review topics with explicit paths; read unread posts or restore history with all=true. Returns JSON {ok, workspace, data}.', {
         type: 'object', properties: {
           action: { enum: ['open', 'list', 'read'] },
           topics: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' }, scenarios: { type: 'array', items: { type: 'string' } }, paths: { type: 'array', items: { type: 'string' } } }, required: ['id', 'title', 'scenarios'], additionalProperties: false } },
@@ -3183,16 +3808,23 @@ export default {
         throw new Error('invalid topic action');
       });
 
-      registerRoomTool('pas_pair_post', 'Post a message, review or escalation; batches are atomic and request_id makes retries idempotent.', {
+      registerRoomTool('pas_pair_post', 'Post reviews or discussion atomically; resolve derives the reply category. Peer changes_requested also reopens final review for corrections without the host.', {
         type: 'object', properties: {
           request_id: { type: 'string' }, posts: { type: 'array', items: { type: 'object', properties: {
             topic: { type: 'string' }, category: { enum: FORUM_CATEGORIES }, message: { type: 'string' }, reply_to: { type: 'string' }, revision: { type: 'integer' },
             evidence: { type: 'object', properties: { command: { type: 'string' }, exit_code: { type: 'integer' }, output: { type: 'string' } }, required: ['command', 'exit_code', 'output'], additionalProperties: false },
           }, required: ['topic', 'category', 'message'], additionalProperties: false } },
         }, required: ['posts'], additionalProperties: false,
-      }, async (root, roomId, sessionID, input) => JSON.stringify(await forumPost(root, roomId, sessionID, { posts: input.posts as ForumPostInput[], ...(typeof input.request_id === 'string' ? { request_id: input.request_id } : {}) })));
+      }, async (root, roomId, sessionID, input) => {
+        const posted = await forumPost(root, roomId, sessionID, {
+          posts: input.posts as ForumPostInput[],
+          ...(typeof input.request_id === 'string' ? { request_id: input.request_id } : {}),
+        });
+        await wakeHostForEscalation(root, roomId, sessionID, posted, ctx.session);
+        return JSON.stringify(posted);
+      });
 
-      registerRoomTool('pas_pair_feed', 'Read updates or wait for new posts and room changes. Reuse cursor; timeout is not failure.', {
+      registerRoomTool('pas_pair_feed', 'Read updates and review next_actions as JSON {ok, workspace, data}. Reuse data.cursor and wait_seconds; timeout is not failure.', {
         type: 'object', properties: { cursor: { type: 'string' }, wait_seconds: { type: 'number' }, waiting_for: { type: 'string' } }, additionalProperties: false,
       }, async (root, roomId, sessionID, input, context) => {
         const initial = roomState(root, roomId);
@@ -3213,7 +3845,15 @@ export default {
         const postIds = new Set(requireForum(snapshot).posts.map(post => post.id));
         const { messages: _messages, forum: snapshotForum, ...state } = snapshot;
         const { posts: _posts, requests: _requests, reads: _reads, baseline: _baseline, ...forumState } = snapshotForum!;
-        return JSON.stringify({ ...result, posts, messages: result.messages.filter(message => !postIds.has(message.id)), updates: result.updates.filter(message => !postIds.has(message.id)), state: { ...state, forum: forumState }, changed: result.changed || posts.length > 0, timed_out: result.timed_out && posts.length === 0 });
+        return JSON.stringify({
+          ...result,
+          posts,
+          messages: result.messages.filter(message => !postIds.has(message.id)),
+          updates: result.updates.filter(message => !postIds.has(message.id)),
+          state: { ...state, forum: { ...forumState, topics: forumState.topics.map(({ snapshot: _snapshot, ...topic }) => topic) }, phase: forumPhase(snapshot), pair: forumPairStatus(snapshot), review: forumReviewState(root, snapshot) },
+          changed: result.changed || posts.length > 0,
+          timed_out: result.timed_out && posts.length === 0,
+        });
       });
 
       registerRoomTool(
@@ -3619,6 +4259,10 @@ export default {
         (root, roomId) => renderTranscript(transcript(root, roomId)),
       );
     });
-    return () => lifecycleController.abort();
+    return () => {
+      lifecycleController.abort();
+      for (const timer of stallTimers.values()) clearTimeout(timer);
+      stallTimers.clear();
+    };
   },
 };

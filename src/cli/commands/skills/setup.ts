@@ -30,11 +30,7 @@ import { defineCommand } from 'citty';
 import search from '@inquirer/search';
 import select from '@inquirer/select';
 import confirm from '@inquirer/confirm';
-import {
-  readConfig,
-  createBackup,
-  writeConfig,
-} from '../../lib/config-safety';
+import { loadOrMigratePolicyStore, readSkillPolicyConfig, writeSkillPolicyConfig } from '../../lib/policy-migration';
 import {
   readSkillPolicies,
   addSkillPolicy,
@@ -106,7 +102,8 @@ export default defineCommand({
   async run() {
     try {
       // Read config first to detect malformed JSON before any interaction.
-      const config = readConfig();
+      const { config, store } = readSkillPolicyConfig();
+      let currentStore = store;
       const view = readSkillPolicies(config);
 
       await runSkillsSetupWizard({
@@ -250,8 +247,11 @@ export default defineCommand({
         removeSkillPolicy,
         clearSkillPolicies,
 
-        createBackup,
-        writeConfig,
+        createBackup: () => '',
+        writeConfig: (next) => {
+          writeSkillPolicyConfig(next, currentStore);
+          currentStore = loadOrMigratePolicyStore().store ?? currentStore;
+        },
         output: (line) => console.log(line),
         isAbortPromptError,
 

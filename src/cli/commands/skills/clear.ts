@@ -14,11 +14,7 @@
  */
 
 import { defineCommand } from 'citty';
-import {
-  readConfig,
-  createBackup,
-  writeConfig,
-} from '../../lib/config-safety';
+import { readSkillPolicyConfig, writeSkillPolicyConfig } from '../../lib/policy-migration';
 import { clearSkillPolicies, type SkillScope } from '../../lib/skill-policies';
 
 function fail(message: string, code = 1): never {
@@ -61,7 +57,7 @@ export default defineCommand({
         fail('Scope "agent" requires --agent <name>.');
       }
 
-      const config = readConfig();
+      const { config, store } = readSkillPolicyConfig();
       const next = clearSkillPolicies(config, scope, agentName);
 
       if (args['dry-run']) {
@@ -69,8 +65,7 @@ export default defineCommand({
         return;
       }
 
-      createBackup();
-      writeConfig(next);
+      writeSkillPolicyConfig(next, store);
       const target =
         scope === 'all'
            ? 'all PAS agent skill policies'

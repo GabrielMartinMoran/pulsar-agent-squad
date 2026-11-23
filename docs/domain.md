@@ -117,9 +117,21 @@ One term per concept; the contracts use these names:
 | Participant activity | Declared working or waiting state, with the response being awaited |
 | Participant availability | Active, finished or unavailable execution, distinct from room membership and acceptance verdict |
 | Forum topic | A discussion and review thread covering one or more scenarios, with a revision and an independent approval |
+| Review scope | Explicit topic paths and relevant dependencies within authorized areas; determines approval freshness, not write permission |
+| Review blocker | A machine-readable unmet gate with responsible role, next action, and topic or discussion reference |
+| Final correction | Peer changes_requested during closing, returning work to active and invalidating final readiness and reconciliation |
 | Escalation candidate | A proposed escalation the pair can discuss and resolve before involving the host |
+| Pair phase | The forum's operational state: waiting for both sessions, active, closing, stalled, closed, or aborted |
+| Expected participant | The exact session id the host spawned and bound to the driver or peer role |
+| Stall candidate | A runtime interruption waiting for the grace window; the participant is not unavailable until the grace expires |
+| Investigator | A read-only researcher that runs non-mutating commands to gather evidence; it does not write or decide |
+| Solo audit | A read-only copilot audit of a stable artifact, without a room or a pair |
+| External effect | A file or service change outside the workspace, such as an installation; it needs peer evidence and may appear in reconciliation, but not in the workspace fingerprint |
+| Delegation changeset | The files changed since the room baseline, including prior-generation implementation; the reconciliation list |
+| Delivery state | Built, packaged, installed, and activation required, reported separately |
 | Mutual wait | Active pair members waiting on each other; the next protocol actor must act or clarify |
 | Killswitch | Host request to abort the pair and interrupt selected current executions with explicit results |
+| Capability policy | PAS-owned per-agent skill rules and blocked tool identifiers stored in `~/.config/opencode/pas/policies.json` |
 
 ## Domain events
 

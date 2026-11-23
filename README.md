@@ -65,7 +65,15 @@ Verify the install, then point OpenCode at the Lead:
 ```bash
 ./pas doctor          # prerequisites, the manifest, and source routes
 ./pas validate        # agent frontmatter and structure
+./pas forum           # read-only live view of the pairing forums
 ```
+
+`./pas forum` starts a loopback-only server, prints its URL, and opens a
+read-only viewer for every room under `.pas/rooms/`: live and archived
+generations, the merged conversation with review evidence, the topic board and
+the close-out. It never posts or mutates a room, and it is a checkout command
+like the other `pas` verbs. Flags: `--port` (default `4780`), `--host`
+(default `127.0.0.1`), `--no-open`, `--workspace`.
 
 Set `default_agent` in `~/.config/opencode/opencode.json` so the Lead is the
 first agent you talk to:
@@ -243,13 +251,34 @@ Sources: [behavior contract](specs/features/product/pi-runtime-target.feature),
 [ADR](docs/adr/0006-pi-runtime-target.md), [agent sources](src/agents/pi/),
 [skill sources](src/skills/pi/).
 
+## Capability policies
+
+Use `pas skills` to manage skill rules and `pas tools` to block OpenCode tools
+for PAS agents. Tool policies are deny-only; `pas tools block <tool>` targets
+all five agents by default, and `--scope agent --agent <name>` selects one.
+The interactive flow is `pas tools setup`; list the current policy with
+`pas tools list --plain`.
+
+PAS stores these choices in
+`~/.config/opencode/pas/policies.json`, not in `opencode.json`. The
+PAS-owned store survives reinstall and upgrades, and builds reapply the
+selected denies to OpenCode agent prompts. Pi does not receive these tool
+policies. See the [policy behavior contract](specs/features/product/tool-policies.feature)
+and [ADR 0015](docs/adr/0015-pas-owned-capability-policy-store.md).
+
+To verify a denial manually, block `webfetch` for one agent, run
+`pas install --target=opencode`, restart OpenCode, and ask that agent in a new
+session to fetch a URL. Record whether the tool is listed and the exact
+denial text.
+
 ## How it works
 
 Describe a feature; the Lead takes it from there:
 
 1. **Describe** — the Lead clarifies scope and critical assumptions.
-2. **Research** — `pas_researcher` gathers evidence; independent questions run
-   as one background batch.
+2. **Research** — `pas_researcher` investigates with a non-mutating shell and
+   gathers evidence; independent questions run as one background batch. No
+   room is used for read-only investigation.
 3. **Plan** — the Lead writes the plan, tagged Gherkin, and task contracts,
    then stops at the approval boundary.
 4. **Approve** — you approve once, scoped to the plan. A changed plan needs a
@@ -263,7 +292,7 @@ Describe a feature; the Lead takes it from there:
 ```mermaid
 flowchart TD
     U[User] -->|feature request| L[PAS Lead<br/>strong · control plane]
-    L -->|research| R[pas_researcher<br/>light · read-only]
+    L -->|research| R[pas_researcher<br/>light · read-only shell]
     R -->|evidence| L
     L -->|plan| A{approval<br/>single-use}
     A -->|approved| D[pas_engineer<br/>light · driver · TDD]
@@ -278,7 +307,7 @@ flowchart TD
 | ---------------- | ------ | ----------------------------------------------------- | -------------------------------------------------------------------------- |
 | PAS Lead         | strong | Original delegated control plane                     | [`src/agents/Pulsar Agent Squad.md`](src/agents/Pulsar%20Agent%20Squad.md) |
 | Pulsar Agent Turbo      | strong | Optional self-driving primary with selective workers | [`src/agents/Pulsar Agent Turbo.md`](src/agents/Pulsar%20Agent%20Turbo.md) |
-| `pas_researcher` | light  | Read-only evidence worker                             | [`src/agents/pas_researcher.md`](src/agents/pas_researcher.md)             |
+| `pas_researcher` | light  | Read-only investigator with a non-mutating shell      | [`src/agents/pas_researcher.md`](src/agents/pas_researcher.md)             |
 | `pas_engineer`   | light  | Pair driver: bounded TDD, self-verifies each unit     | [`src/agents/pas_engineer.md`](src/agents/pas_engineer.md)                 |
 | `pas_copilot`    | light  | Read-only pair peer: re-executes and audits           | [`src/agents/pas_copilot.md`](src/agents/pas_copilot.md)                   |
 
@@ -321,9 +350,18 @@ Contracts, not good intentions, keep the workflow predictable:
 - **Background research, one writer.** Independent research questions run in
   parallel. Related scenarios can be open together, while only the engineer
   writes and the copilot audits ready work.
-- **Pairing as a forum.** The pair opens related topics, posts review requests
-  and evidence, and discusses escalation candidates before asking the host to
-  intervene. A passing independent final review closes the room.
+- **Pairing as a forum.** The host binds both spawned sessions before work
+  starts; the pair opens related topics, posts review requests and evidence,
+  and discusses escalation candidates before asking the host to intervene. A
+  stalled participant wakes the host, and a passing independent final review
+  closes the room.
+- **Investigation is not a pair.** Read-only diagnosis uses one
+  `pas_researcher` with a non-mutating shell; the copilot is the peer/auditor,
+  and the engineer writes only with a live peer.
+- **External effects are reconciled explicitly.** Installs and profile updates
+  use a writer/verifier pair; workspace `authorized_paths` does not cover them,
+  so reconciliation lists the external files or both agree on an empty list
+  with the peer's command evidence.
 - **State as a single-writer store.** `pas_toolkit` owns `list`, `check`,
   `new`, and `archive`; malformed or conflicting state blocks instead of
   guessing.
@@ -346,6 +384,8 @@ This README is the map; these are the deeper maps:
   and domain events.
 - [Product](docs/product.md) — what PAS is for, who it serves, feature groups,
   and success metrics.
+- [UI guidelines](docs/ui-guidelines.md) — the forum viewer's tokens,
+  components, states and accessibility rules.
 - [ADRs](docs/adr/) — the decision trail, from numbered state directories to
   the PRD retirement.
 

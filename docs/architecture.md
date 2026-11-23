@@ -1,4 +1,4 @@
-> Owner: PAS maintainers · Updated: 2026-11-01
+> Owner: PAS maintainers · Updated: 2026-11-03
 
 # Architecture
 
@@ -29,7 +29,7 @@ changes execution ownership, not the worker roster or state/approval contracts.
 |---|---|---|---|
 | PAS Lead | strong | Original control plane: plan, approve, adjudicate, persist | `src/agents/Pulsar Agent Squad.md` |
 | Pulsar Agent Turbo | strong | Optional primary: direct research/implementation/QA; selective background workers | `src/agents/Pulsar Agent Turbo.md` |
-| `pas_researcher` | light | Read-only evidence worker | `src/agents/pas_researcher.md` |
+| `pas_researcher` | light | Read-only investigator with a non-mutating shell | `src/agents/pas_researcher.md` |
 | `pas_engineer` | light | Driver of the copiloted pair: bounded TDD, self-verifies every unit | `src/agents/pas_engineer.md` |
 | `pas_copilot` | light | Read-only peer: audits by re-executing, reviews code, skills and UI/UX | `src/agents/pas_copilot.md` |
 
@@ -39,7 +39,8 @@ prompt text: the original Lead reads `.pas/**`, `specs/**/*.feature`, and
 owns the same PAS artifacts, subject to single-use approval. The engineer writes
 source but never `.pas/**` or Gherkin; the copilot is read-only with shell, so it
 can re-execute checks without ever editing the tree; the researcher is read-only
-without shell. The exact profiles are the frontmatter of each prompt; the Lead
+with a non-mutating shell for investigation. The exact profiles are the
+frontmatter of each prompt; the Lead
 contract is `## Runtime permissions and capabilities`. Sources:
 `specs/features/product/lead-runtime-permissions.feature`,
 `specs/features/product/worker-internal-parallelism.feature`,
@@ -88,7 +89,13 @@ manifest. The Pi build copies `src/agents/pi/` verbatim and keeps its native
 `pi-subagents` frontmatter; that roster still ships `pas_researcher`,
 `pas_developer` and `pas_qa`, an asymmetry preserved on purpose
 (`docs/adr/0010-copiloted-engineer-and-copilot.md`). The OpenCode build injects
-`permission.skill` rules into agent prompts.
+per-agent skill rules and blocked-tool denies from the PAS-owned
+`~/.config/opencode/pas/policies.json` store into agent prompts. Tool denies
+follow all existing V2 permission rules so last-match-wins keeps them effective.
+On first load, PAS migrates legacy skill rules from `opencode.json` without
+modifying that file. Pi artifacts are copied without OpenCode policy injection.
+Sources: `src/cli/lib/policy-store.ts`, `src/cli/lib/policy-migration.ts`,
+`src/cli/lib/skill-injection.ts`, and `src/cli/lib/policy-injection.ts`.
 
 The Pi toolkit extension is assembled as a thin `index.ts` adapter
 plus a byte copy of the canonical core as `core.ts`. Pi installation always
@@ -103,6 +110,12 @@ Sources: `src/cli/commands/build.ts`, `src/cli/commands/install.ts`,
 deterministic; the installed copy must match the freshly built `dist/`. Edit
 `src/` and run install to rebuild and copy — never edit `dist/` or the installed
 copy. `pas build` remains available when you only need generated artifacts.
+
+The plugin's tool layer can reload on a running runtime, but agent prompts are
+read when the session or service starts. A session that was already open during
+`pas install` may therefore show new room behavior with old prompt guidance.
+Restart the service or open a new session before judging prompt changes; the
+same rule applies to a resumed session that predates the install.
 
 ## Room protocol
 
@@ -119,12 +132,78 @@ posts by default; topic reads with `all: true` return the complete history.
 The feed returns a room summary rather than the full transcript. A topic read
 warns when discussion reaches 20 posts or 32 KiB of message text, excluding
 readiness and approval posts. This advisory never blocks work or forces escalation.
+The host binds the two spawned session ids with `pas_pair_room` action `expect`.
+A role cannot join from a different session, and work stays closed until both
+participants are present and active (`phase: active`). The room phases are
+`waiting_for_pair`, `active`, `closing`, `stalled`, `closed`, and `aborted`.
+The driver's `finish` moves the room to `closing` and may carry `files`, the
+delegation changeset from `changes`; the submission is kept. An earlier peer
+submission is discarded so the peer reconciles after the final suite. The
+peer's `final_approved` closes the room only when both current participants are
+active and both current session ids submitted the matching reconciliation.
+External absolute paths are valid in `reconcile` when the brief authorizes
+them; `authorized_paths` only bounds the workspace fingerprint.
+
+OpenCode execution events drive presence: `execution.started` reactivates a
+participant. Only `execution.interrupted` creates a stall **candidate**; after a
+grace with no new start the participant becomes unavailable and the host
+receives one synthetic `PAIR_BROKEN` message with the recommended recovery.
+`execution.succeeded` is per step and never counts as completion;
+`execution.failed` also fires for transient step failures and is ignored by the
+lifecycle. Duplicate interruptions within the grace neither add room events nor
+extend the grace. A stalled room rejects worker posts except an escalation, and
+a writer never continues alone.
+
 The room records hashes of authorized paths at creation to compare subsequent
-changes. Topic paths can narrow freshness checks; omitted paths cover all
-authorized paths. Symlinks and oversized inputs are rejected instead of claiming
+changes. New writable topics require explicit review paths, including relevant
+dependencies, within those authorized areas. Existing topics without paths
+retain whole-room checks. Each approval must be fresh for its own paths;
+different topics need not share a fingerprint. Symlinks and oversized inputs are rejected instead of claiming
 freshness when verification is unavailable. Fingerprints cover only declared
 paths and do not prove that a participant ran its command. Host interruption
 does not revert files, and an unconfirmed runtime stop is not a confirmed stop.
+`pas_pair_room status` returns a compact summary; `full: true` returns the
+transcript. Mutation outputs are compact acknowledgements. Legacy `pas_room_*`
+tools remain for rooms without a forum and are rejected inside a forum room.
+
+The four `pas_pair_*` tools return valid JSON: `{ok, workspace, data}` on
+success, or `{ok: false, workspace, code, message}` with `blockers` for review
+gate failures. They do not append text to JSON. Status and feed expose the
+same review diagnostics: finish blockers, final blockers, and role-specific
+next actions. Stale topic diagnostics include changed paths when a review
+snapshot is available. Omitted historical snapshots use the declared scope.
+`resolve` derives an answer or resolution from `reply_to`; escalation
+resolution remains host-only.
+
+During `closing`, the peer can post `changes_requested` on the current topic
+revision. This returns the room to `active`, reopens that topic, and clears
+final readiness, its fingerprint, and reconciliation. Unrelated topic
+approvals remain valid for unchanged paths. The pair corrects, reviews, and
+requests a fresh final audit without host intervention. The driver formats
+changed files before each readiness announcement. Final approval still requires
+independent suite evidence and matching lists from both current participants.
+
+Read-only work does not need a room: `pas_researcher` investigates with a
+non-mutating shell and never edits; `pas_copilot` audits a stable artifact only. The engineer/copilot pair is the write unit. A returned
+writer may resume alone only while its peer is active; if both are unavailable,
+the host interrupts both and restarts the generation.
+
+The researcher owns investigation completeness independently of the Lead's
+review. Briefs provide a question, context, read boundaries, expected result,
+and assigned skills; suggested files are entry points, not a lookup script.
+The worker follows material behavior and evidence end to end, tests alternative
+explanations, and bounds negative claims by the inspected search scope. Explicit
+exclusions and read-only restrictions still apply. Exhaustiveness means covering
+branches that could change the conclusion, not reading the entire repository.
+Reports lead with the answer and record coverage and `closure` under
+`source_exhaustion`: `RESOLVED`, `PARTIAL`, or `BLOCKED`. Only resolved research
+without a material gap recommends `CONTINUE`; unavailable required evidence or
+an interrupted investigation gets a qualified handoff. OpenCode and Pi researcher
+prompts share these criteria without changing their runtime tool permissions.
+Sources: `src/agents/pas_researcher.md`,
+`src/agents/pi/pas_researcher.md`, and
+`tests/unit/researcher-contract.test.ts`. These tests pin the prompt contract;
+they do not measure model investigation quality.
 
 The earlier interface remains available for existing legacy rooms. The Lead
 opens a legacy room as **host**; the engineer joins as **driver** and the read-only
@@ -227,6 +306,78 @@ Sources: `src/tools/pas-toolkit.ts`, `src/agents/pas_engineer.md`,
 `specs/features/product/pairing-coordination.feature`,
 `tests/unit/pairing-coordination.test.ts`.
 
+## Forum viewer
+
+`./pas forum` starts a loopback-only, read-only web app over the room store; it
+is a checkout command like every other `pas` verb and is not distributed by
+`pas install` (`docs/adr/0002-living-docs-as-maps.md` keeps `docs/ui-guidelines.md`
+as its visual source of truth). The command, flags and lifecycle live in
+`src/cli/commands/forum.ts`; the server, projection and watcher under
+`src/cli/forum/`. The viewer never writes `.pas/rooms/**` and cannot post,
+resolve, interrupt or mutate a room.
+
+The data path is one-way: `.pas/rooms/**` → defensive store read
+(`store.ts`) → projection to the shared types in `contract.ts`
+(`project.ts`) → JSON/SSE → client reducer → DOM. A malformed document becomes
+an `unreadable` summary with `phase: null`; the client must never infer a live
+phase from it. The persisted phase mapping is duplicated from the toolkit plugin
+on purpose, pinned by unit tests, and the canonical rules remain in
+`src/tools/pas-toolkit.ts` (see Room protocol above and
+`docs/adr/0011-bounded-delegation-contract.md` for the boundary that keeps the
+CLI from importing the plugin).
+
+Static delivery is a fixed allowlist, not a filesystem path: `/`, `/app.js`,
+`/styles.css` and `/favicon.svg`. `assets.ts` resolves `web/` from
+`import.meta.dir`, reads HTML, CSS and the favicon from disk, and builds
+`web/client/main.ts` once with `Bun.build({ target: 'browser' })` into memory
+(`write: false`); the result is cached for the process. A build failure is
+logged and answered with a `500` JSON error rather than a broken page. Every
+asset response carries `Cache-Control: no-store`,
+`X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src
+'self'`; there is no external font, script, CDN or network call.
+
+The browser client is vanilla TypeScript with no runtime dependency and no
+server-side templating of room data:
+
+- `model.ts` is DOM-free: reducer, session-list selection and order helpers,
+  generation keys, filters, near-bottom/new-count accounting, hash routes,
+  theme resolution and close-out selectors are unit tested in
+  `tests/unit/forum-client-model.test.ts`.
+- `format.ts` holds pure display formatters (phase, role, category, relative
+  time, fingerprints, exit codes, pluralisation).
+- `live.ts` owns the SSE lifecycle with bounded exponential backoff and accepts
+  an injected `EventSource` factory and scheduler, so reconnect behaviour is
+  tested without timers.
+- `render.ts` builds DOM with `textContent` only; room-derived strings never
+  reach `innerHTML`. The timeline is append-only so live traffic cannot lose
+  scroll position, focus or an open evidence disclosure.
+- `main.ts` owns the URL hash (`#/<roomKey>/<tab>`), the session list and
+  detail fetches, the new-entry marker, the theme toggle (`pas.forum.theme`),
+  the mobile drawer and keyboard handling. Only `aria-live="polite"` new-entry
+  counts are announced.
+
+The rail is fed by `GET /api/sessions`: one row per session, in the server's
+order (`updatedAt` descending). Each row is labelled from the session title,
+marks `titleSource: 'goal'` as a fallback, and carries the default
+generation's phase and counts. `GET /api/rooms/:id[?generation=N]` remains the
+only detail source. Route keys stay generation-specific (`<id>` for the live
+document, `<id>@<generation>` for an archive), so deep links, detail fetches
+and stale-response guards keep comparing the same keys. The header selector
+derives its options from `SessionSummary.generations`. SSE events name one
+generation key; the client maps it back to its session id before refreshing
+the list, so a change to any generation re-sorts the session without stealing
+selection, focus or scroll.
+
+Scenarios 14–16 are `@manual`: the interface is verified by construction
+(semantic markup, the documented `data-*` states, tokens in
+`docs/ui-guidelines.md` matching `styles.css`, and the client unit tests) and
+then by the Lead's browser run using the procedure in the forum-viewer plan.
+Sources: `specs/features/product/forum-viewer.feature`,
+`src/cli/forum/{assets,server,project,store,watch}.ts`,
+`src/cli/forum/web/**`, `docs/ui-guidelines.md`,
+`tests/integration/forum-assets.test.ts`,
+`tests/unit/forum-client-model.test.ts`.
+
 ## Project bootstrap
 
 The installed, single-file `pas_toolkit` exposes `init` in addition to
@@ -304,3 +455,5 @@ Architecturally significant decisions, oldest first:
 - `docs/adr/0014-participant-lifecycle-and-killswitch.md` — ten-second
   activity-aware waits, real availability tracking, and bounded host interruption
   of current participant executions.
+- `docs/adr/0015-pas-owned-capability-policy-store.md` — versioned PAS-owned
+  capability policies and deny-only OpenCode tool restrictions.

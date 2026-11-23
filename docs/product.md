@@ -1,4 +1,4 @@
-> Owner: PAS maintainers · Updated: 2026-10-29
+> Owner: PAS maintainers · Updated: 2026-11-03
 
 # Product
 
@@ -38,6 +38,11 @@ Each group names its behavior contracts:
 - **State lifecycle** — numbered feature directories, single-writer state
   operations through the installed toolkit, hygiene detection. Contracts:
   `specs/features/product/state-hygiene.feature`.
+- **Forum viewer** — `pas forum` starts a read-only, local web app that follows
+  a delegation in real time: live and archived rooms, the room header, the
+  merged conversation with review evidence, the topic board and the close-out.
+  Contract: `specs/features/product/forum-viewer.feature`. The visual language
+  is `docs/ui-guidelines.md`.
 - **Parallelism** — worker-internal batching guards: concurrent independent
   checks, sequential shared state. Contracts:
   `specs/features/product/worker-internal-parallelism.feature`.
@@ -60,6 +65,9 @@ Each group names its behavior contracts:
   configure, offers only OpenCode and Pi, and writes real per-subagent model
   overrides with backups. Contract:
   `specs/features/product/target-aware-agents-setup.feature`.
+- **Capability policies** — `pas skills` and `pas tools` manage per-agent
+  capability restrictions in the PAS-owned policy store; tool policies are
+  deny-only. Contract: `specs/features/product/tool-policies.feature`.
 
 ## Scope boundaries
 

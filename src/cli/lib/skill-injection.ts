@@ -1,10 +1,10 @@
 /**
  * Compile CLI-managed per-agent skill rules into built OpenCode agents.
  *
- * The `pas skills` commands still read and write the legacy
- * `agent.<name>.permission.skill` config shape. This build step also reads
- * native V2 `agents.<name>.permissions` rules, then emits skill entries in
- * each source agent's V2 `permissions` list. Appending them preserves
+ * The `pas skills` commands read and write the PAS-owned policy store. The
+ * store is populated once from legacy V1 per-agent maps and native V2 rows;
+ * native rows take precedence. The build emits rules in each source agent's
+ * V2 `permissions` list. Appending them preserves
  * OpenCode's last-matching-rule-wins behavior after broad wildcard rules.
  *
  * Build and install propagate the configured rules into the dist and
@@ -15,17 +15,15 @@
  * supported during migration; non-OpenCode targets have no OpenCode
  * permissions block and are copied without modification.
  *
- * The build step reads the user's `opencode.json` via the
- * `PAS_OPENCODE_CONFIG_PATH` env var when set (for testability and
- * CI reproducibility), otherwise via the default path used by
- * `readConfig()` in `config-safety.ts`.
+ * Legacy config migration reads `PAS_OPENCODE_CONFIG_PATH` when set, otherwise
+ * the standard config path under the user's home directory.
  */
 
 import type {
   OpenCodeConfig,
   PermissionAction,
 } from './config-safety';
-import { readConfig } from './config-safety';
+import { loadOrMigratePolicyStore } from './policy-migration';
 
 export interface PermissionBlockBounds {
   /** 0-based line index of the `permission:` line. */
@@ -354,16 +352,16 @@ export function injectSkillBlock(
 }
 
 /**
- * Build-time entry point: read the user's opencode.json (or fixture),
- * pull its per-agent skill rules, and inject them into the agent's dist
+ * Build-time entry point: load/migrate the user's PAS policy store, then
+ * inject per-agent skill rules into the agent's dist
  * content using V2 frontmatter when present, with V1 support during migration.
  * Returns the content UNCHANGED when:
- *   - the user config is not parseable (return source as-is)
+ *   - there are no per-agent skill rules
  *   - the agent has no `permission.skill` rules in user config
  *   - the source has no supported OpenCode permissions block
  *
- * The config path is `PAS_OPENCODE_CONFIG_PATH` when set, otherwise the
- * default path used by `readConfig()`.
+ * Malformed/unsupported stores propagate an actionable error rather than
+ * silently dropping policy.
  */
 export function injectSkillPoliciesFromConfig(
   agentName: string,
@@ -371,14 +369,15 @@ export function injectSkillPoliciesFromConfig(
   configPathOverride?: string,
 ): string {
   const configPath = configPathOverride ?? process.env.PAS_OPENCODE_CONFIG_PATH;
-  let config: OpenCodeConfig;
-  try {
-    config = configPath ? readConfig(configPath) : readConfig();
-  } catch {
-    // Malformed JSON or unreadable config: do not break the build.
-    return content;
+  const prior = process.env.PAS_OPENCODE_CONFIG_PATH;
+  if (configPath) process.env.PAS_OPENCODE_CONFIG_PATH = configPath;
+  let store;
+  try { store = loadOrMigratePolicyStore().store; }
+  finally {
+    if (prior === undefined) delete process.env.PAS_OPENCODE_CONFIG_PATH;
+    else process.env.PAS_OPENCODE_CONFIG_PATH = prior;
   }
-  const rules = readAgentSkillBlock(config, agentName);
+  const rules = store?.agents[agentName]?.skills ?? {};
   if (findPermissionsBlock(content)) {
     return injectSkillRules(content, rules);
   }

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { $ } from 'bun';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 const CLI_ENTRY = 'src/cli/index.ts';
 
@@ -68,5 +71,20 @@ describe('doctor command', () => {
     const result = await $`bun run ${CLI_ENTRY} doctor`.quiet();
     const stdout = result.stdout.toString();
     expect(stdout).toMatch(/PASS: doctor|FAIL: doctor/);
+  });
+
+  it('reports a healthy policy store and ignored legacy rules', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'pas-doctor-policy-'));
+    try {
+      const config = join(home, '.config/opencode');
+      mkdirSync(join(config, 'pas'), { recursive: true });
+      writeFileSync(join(config, 'opencode.json'), JSON.stringify({ agent: { pas_engineer: { permission: { skill: { 'legacy-*': 'deny' } } } } }));
+      writeFileSync(join(config, 'pas/policies.json'), JSON.stringify({ version: 1, agents: { pas_engineer: { skills: {}, tools: [] } } }));
+      const result = await $`bun run ${CLI_ENTRY} doctor`.env({ ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config') }).quiet();
+      const stdout = result.stdout.toString();
+      expect(result.exitCode).toBe(0);
+      expect(stdout).toContain('policy store readable and supported');
+      expect(stdout).toContain('1 legacy skill rule(s) in opencode.json are ignored');
+    } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });

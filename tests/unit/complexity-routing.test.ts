@@ -81,6 +81,8 @@ describe('PAS worker contracts', () => {
     const copilot = readFileSync('src/agents/pas_copilot.md', 'utf-8');
 
     expect(researcher).toContain('action: edit\n    resource: "*"\n    effect: deny');
+    expect(researcher).toContain('action: shell\n    resource: "*"\n    effect: allow');
+    expect(researcher).toContain('non-mutating');
     expect(copilot).toContain('action: edit\n    resource: "*"\n    effect: deny');
     expect(engineer).toContain('action: edit\n    resource: "*"\n    effect: allow');
     expect(engineer).toContain('resource: ".pas/**"\n    effect: deny');
