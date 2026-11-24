@@ -2,6 +2,11 @@ import { defineCommand } from 'citty';
 import { parseManifest } from '../lib/manifest';
 import { spawnSync } from 'bun';
 import { existsSync, readFileSync } from 'fs';
+import {
+  loadToolPolicyStore,
+  resolvePolicyPath,
+} from '../lib/policy-store';
+import { normalizeTool } from '../lib/tool-policies';
 
 let FAILURES = 0;
 
@@ -114,6 +119,31 @@ export const doctorCommand = defineCommand({
       } catch {
         fail(`manifest file not readable: ${MANIFEST}`);
       }
+    }
+
+    console.log('');
+    console.log('== doctor: tool policy store ==');
+    const policyPath = resolvePolicyPath();
+    try {
+      // Loading is read-only: it never creates directories or rewrites the file.
+      const store = loadToolPolicyStore(policyPath);
+      if (store === null) {
+        pass(`tool policy store not configured: ${policyPath}`);
+      } else {
+        pass(`tool policy store readable and supported: ${policyPath}`);
+        for (const [agent, entry] of Object.entries(store.agents)) {
+          for (const tool of entry.tools) {
+            const warning = normalizeTool(tool).warning;
+            if (warning) console.log(`Warning: doctor/${agent}: ${warning}`);
+          }
+        }
+      }
+    } catch (error) {
+      fail(
+        `tool policy store unhealthy: ${policyPath} (${
+          error instanceof Error ? error.message : String(error)
+        })`,
+      );
     }
 
     console.log('');

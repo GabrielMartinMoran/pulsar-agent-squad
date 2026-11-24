@@ -1,4 +1,4 @@
-> Owner: PAS maintainers · Updated: 2026-10-26
+> Owner: PAS maintainers · Updated: 2026-11-24
 
 # Architecture
 
@@ -53,20 +53,86 @@ The source contracts are `src/agents/Pulsar Agent Turbo.md`,
 `specs/features/product/turbo-mode.feature` and
 `specs/features/product/worker-internal-parallelism.feature`.
 
+At an actual handoff, both primary modes use one short XML
+`<delegation_brief>`: objective, authorized scope and exclusions, sources,
+acceptance, required checks, expected evidence, and non-binding hints. The block
+does not change when either mode delegates, the roster, or permissions; it is a
+text contract, not runtime enforcement. Worker reports close the loop: the
+researcher leads with a grounded answer plus coverage, limits, and an explicit
+closure status, and separates source inspection from live verification (it has
+no shell). QA may re-verify existing behavior from current evidence without
+demanding a new Red/Green cycle; the developer keeps TDD for behavior changes
+and the full suite. Sources:
+`specs/features/product/bounded-open-code-delegation.feature` (A1–A3) and the
+five prompts above.
+
 ## Distribution pipeline
 
-Prompts and the state toolkit ship as built artifacts:
+Prompts and the state toolkit ship as built artifacts. The manifest is the
+single source of target rows; commands select its rows before they build or
+copy:
 
 ```text
-src/agents/*.md + src/tools/pas-toolkit.ts
-  -> ./pas build --target=opencode  -> dist/platforms/opencode/{agents,plugins}/
+src/agents/*.md + src/tools/pas-toolkit.ts + config/platforms.manifest
+  -> ./pas build --target=opencode   -> dist/platforms/opencode/{agents,plugins}/
   -> ./pas install --target=opencode -> ~/.config/opencode/{agents,plugins}/
 ```
 
-Sources: `src/cli/commands/build.ts`, `src/cli/commands/install.ts`,
-`config/platforms.manifest`. Builds are deterministic; the installed copy must
-match `dist/`. Edit `src/` and rebuild — never edit `dist/` or the installed
-copy.
+A real `pas install` builds every selected target from source and validates
+the whole artifact set before the first destination write; a failed build
+leaves the destination untouched. `--dry-run` never builds or writes: it
+previews the existing artifacts or fails naming the missing ones. `pas update`
+uses one action selection for both the plan it prints and the actions it runs:
+`git pull --ff-only` plus the default OpenCode install, `--rebuild` alone
+builds, `--reinstall` installs explicitly, and `--check` only prints. A failed
+install after a completed pull reports partial completion and the checkout is
+not rolled back. Builds are deterministic; the installed copy must match
+`dist/`. Edit `src/` and rebuild — never edit `dist/` or the installed copy.
+
+Each OpenCode agent destination carries a destination-local
+`.pas-install-inventory.json` with relative filenames and SHA-256 digests,
+written only after a successful copy. Before building or copying, the installer
+checks the agents directory and every shipped agent path with `lstat`: a
+symbolic link or non-regular entry is a conflicting path and aborts the install
+before any artifact is copied. A reinstall prunes only a recorded retired file
+that is still a regular, unmodified file; edited, symlinked, unowned, and user
+files are never removed. Protected records keep their original digest, and the
+marker remains after uninstall even with zero records, so a managed destination
+never falls back to name-based removal. Only a destination with no marker keeps
+the unchanged pre-inventory canonical fallback. A malformed or symlinked
+inventory fails before any write or deletion. Sources:
+`src/cli/lib/build-target.ts`, `src/cli/lib/install-inventory.ts`,
+`src/cli/commands/{build,install,uninstall,update}.ts`,
+`config/platforms.manifest`,
+`specs/features/product/open-code-distribution.feature`.
+
+## Tool policies
+
+Tool denies are PAS-owned, deny-only, and persisted in a versioned store
+(`pas/policies.json` inside the OpenCode config directory, resolved from
+`XDG_CONFIG_HOME` or `HOME`). `pas tools list/setup/block/unblock/clear` never
+edit `opencode.json(c)`, reject allow/ask effects, validate tool identifiers,
+and write the store atomically; `--dry-run` and cancelled setup write nothing.
+Invalid data is reported by `pas tools` and `pas doctor` without overwriting it.
+Sources: `src/cli/lib/policy-store.ts`, `src/cli/lib/tool-policies.ts`,
+`src/cli/commands/tools/*`, `specs/features/product/open-code-tool-policies.feature`.
+
+Build is the injection boundary. `buildManifestEntries` loads and validates the
+store before clearing any dist path, so an invalid store fails the build (and a
+real install) before output is written. Per agent, skill injection runs first;
+tool denies follow. Persistent source agents use the legacy `permission:` map,
+so canonical actions are written as legacy keys in the same map
+(`shell`→`bash`, `subagent`→`task`, `edit`→`edit`/`write`/`patch`) after every
+existing rule. Native V2 `permissions:` lists get an appended
+`resource: "*"` deny. Unrelated rules, rule order, and existing denies are
+preserved; an injected deny only tightens. Reinstall rebuilds the artifacts, and
+uninstall never removes the store. `pas update` and `pas install` share this
+build path. Sources: `src/cli/lib/policy-injection.ts`,
+`src/cli/lib/build-target.ts`, `src/cli/commands/install.ts`,
+`specs/features/product/open-code-tool-policies.feature` (P3–P4).
+
+Runtime enforcement is not proven by build assertions: scenario P5 is a manual
+check in a disposable OpenCode V2 profile.
 
 ## Project bootstrap
 

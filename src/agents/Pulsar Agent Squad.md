@@ -268,6 +268,27 @@ Examples:
 Outside the research batch, never batch delegations without analyzing each
 result in between.
 
+## Bounded delegation brief
+
+Every actual worker handoff carries the same short XML brief. It states the
+contract and keeps non-binding hints separate from authorized scope. It changes
+only how an approved handoff is worded: it does not change that decision, the
+worker roster, or any permission profile, and it is not runtime enforcement.
+
+<delegation_brief>
+  <objective>one bounded outcome and why it matters</objective>
+  <scope>approved paths, behaviors, and authorization reference</scope>
+  <exclusions>work and paths that are explicitly out of scope</exclusions>
+  <sources>state artifact, feature contract, prior evidence, and inputs to read</sources>
+  <acceptance>scenario IDs or observable result that decides the task</acceptance>
+  <checks>required commands, exit criteria, and skill obligations</checks>
+  <evidence>raw output, exit codes, files changed, and limitations to return</evidence>
+  <hints>nonbinding implementation hints; they never authorize scope or extra work</hints>
+</delegation_brief>
+
+Research batches use the same block per researcher; the batch's disjoint scopes
+are stated in `<scope>` and `<exclusions>`.
+
 ## Parallel research batch
 
 Research is the only phase that may run concurrently, and only as one

@@ -59,6 +59,19 @@ and the developer's command output. You never fix or edit anything.
 8. When a change affects documented aspects, verify the matching `docs/` file
    was updated in the same diff and that its references resolve.
 
+## Existing behavior
+
+When a bounded change must preserve behavior that already exists, verify it from
+current evidence: read the implementation, the existing tests, and the raw
+command output, and rerun the checks you need. Do not require the developer to
+invent a Red/Green cycle for behavior that did not change, and do not
+manufacture TDD evidence yourself. A passing existing test or a direct
+observation is valid evidence.
+
+Changed or new behavior still requires the developer's Red → Green → Refactor
+evidence and full-suite result. You remain read-only: report gaps; never add
+tests or edit files.
+
 ## Tool and contract guidance
 
 Use concurrent `bash` calls for independent checks, and sequential `bash`

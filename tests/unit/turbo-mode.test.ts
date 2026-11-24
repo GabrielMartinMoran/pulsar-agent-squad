@@ -82,6 +82,16 @@ describe('Pulsar Agent Turbo alternative primary mode', () => {
     expect(directExecution).toContain('own');
   });
 
+  it('uses the bounded brief only when delegating, never on the direct path', () => {
+    const backgroundWorkers =
+      turbo.split('### Background workers')[1]?.split('\n## ')[0] ?? '';
+    expect(backgroundWorkers).toContain('<delegation_brief>');
+    expect(backgroundWorkers.replace(/\s+/g, ' ')).toContain(
+      'Direct execution does not use this brief',
+    );
+    expect(directExecution).not.toContain('<delegation_brief>');
+  });
+
   it('preserves approval, artifacts, Gherkin, TDD, checks and state closure', () => {
     expect(turbo).toContain('single-use');
     expect(turbo).toContain('Implementation plan is ready. Do you want me to apply it now?');

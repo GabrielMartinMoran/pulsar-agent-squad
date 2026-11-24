@@ -14,13 +14,12 @@
  */
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
-import { existsSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { tmpdir } from 'os';
 import { $ } from 'bun';
 
-const REPO_ROOT = join(import.meta.dir, '..', '..');
 const CLI_ENTRY = 'src/cli/index.ts';
+const TMP_ROOT = '/tmp/opencode';
 
 let tempHome = '';
 let fixtureConfig = '';
@@ -34,8 +33,9 @@ const PAS_AGENT_FILES = [
 ];
 
 beforeAll(() => {
+  mkdirSync(TMP_ROOT, { recursive: true });
   tempHome = join(
-    tmpdir(),
+    TMP_ROOT,
     'pas-build-skill-inj-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
   );
   mkdirSync(tempHome, { recursive: true });
@@ -49,18 +49,16 @@ afterAll(() => {
   if (tempHome && existsSync(tempHome)) {
     rmSync(tempHome, { recursive: true, force: true });
   }
-  // Restore dist from canonical backup so other test suites are not
-  // affected.
-  if (existsSync('/tmp/canonical-dist-openode')) {
-    const target = 'dist/platforms/opencode/agents';
-    rmSync(target, { recursive: true, force: true });
-    mkdirSync(target, { recursive: true });
-    for (const f of readdirSyncSafe('/tmp/canonical-dist-openode')) {
-      const content = readFileSync(join('/tmp/canonical-dist-openode', f));
-      writeFileSync(join(target, f), content);
-    }
-  }
 });
+
+function isolatedEnv(): Record<string, string | undefined> {
+  return {
+    ...process.env,
+    HOME: tempHome,
+    XDG_CONFIG_HOME: join(tempHome, '.config'),
+    PAS_OPENCODE_CONFIG_PATH: fixtureConfig,
+  };
+}
 
 function writeConfig(path: string): void {
   const config = {
@@ -87,21 +85,10 @@ function writeConfig(path: string): void {
   writeFileSync(path, JSON.stringify(config, null, 2));
 }
 
-function readdirSyncSafe(path: string): string[] {
-  try {
-    return require('fs').readdirSync(path) as string[];
-  } catch {
-    return [];
-  }
-}
-
 describe('pas build — permission.skill injection (CLI-preserving fix)', () => {
   it('injects per-agent `permission.skill` block into the dist frontmatter', async () => {
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`
-      .env({
-        ...process.env,
-        PAS_OPENCODE_CONFIG_PATH: fixtureConfig,
-      })
+      .env(isolatedEnv())
       .quiet();
     expect(result.exitCode).toBe(0);
 
@@ -126,10 +113,7 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
 
   it('injects the skill block for every canonical agent that has rules in the fixture', async () => {
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`
-      .env({
-        ...process.env,
-        PAS_OPENCODE_CONFIG_PATH: fixtureConfig,
-      })
+      .env(isolatedEnv())
       .quiet();
     expect(result.exitCode).toBe(0);
 
@@ -146,10 +130,7 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
 
   it('builds the developer agent body without legacy progress guidance', async () => {
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`
-      .env({
-        ...process.env,
-        PAS_OPENCODE_CONFIG_PATH: fixtureConfig,
-      })
+      .env(isolatedEnv())
       .quiet();
     expect(result.exitCode).toBe(0);
 
@@ -163,10 +144,7 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
 
   it('places the `skill:` block AFTER `*`: allow so last-match-wins applies', async () => {
     const result = await $`bun run ${CLI_ENTRY} build --target=opencode`
-      .env({
-        ...process.env,
-        PAS_OPENCODE_CONFIG_PATH: fixtureConfig,
-      })
+      .env(isolatedEnv())
       .quiet();
     expect(result.exitCode).toBe(0);
 
@@ -180,5 +158,27 @@ describe('pas build — permission.skill injection (CLI-preserving fix)', () => 
     // Skill block must be a direct sibling of `*`: allow, indented 2 spaces.
     expect(lines[skillLine]).toBe('  skill:');
     expect(lines[skillLine + 1].startsWith('    ')).toBe(true);
+  });
+
+  it('install builds with the same skill injection and copies it to a custom destination', async () => {
+    const destdir = mkdtempSync(join(TMP_ROOT, 'pas-install-skill-injection-'));
+    try {
+      const result = await $`bun run ${CLI_ENTRY} install --target=opencode --destdir=${destdir}`
+        .env(isolatedEnv())
+        .quiet();
+      expect(result.exitCode).toBe(0);
+
+      const installed = readFileSync(
+        join(destdir, '.config/opencode/agents/pas_developer.md'),
+        'utf-8',
+      );
+      expect(installed).toContain('"IADEV*": deny');
+      expect(installed).toContain('"git-*": deny');
+      // Same injected bytes as the build-only path.
+      const built = readFileSync('dist/platforms/opencode/agents/pas_developer.md', 'utf-8');
+      expect(installed).toBe(built);
+    } finally {
+      rmSync(destdir, { recursive: true, force: true });
+    }
   });
 });

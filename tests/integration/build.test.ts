@@ -1,8 +1,32 @@
-import { describe, expect, it, beforeAll } from 'bun:test';
-import { existsSync, readdirSync, rmSync, readFileSync } from 'fs';
+import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  readFileSync,
+} from 'fs';
+import { join } from 'path';
 import { $ } from 'bun';
 
 const CLI_ENTRY = 'src/cli/index.ts';
+const TMP_ROOT = '/tmp/opencode';
+
+// Every build runs with a disposable home so the user's real OpenCode skill
+// rules or PAS tool policy store can never affect the built artifacts.
+mkdirSync(TMP_ROOT, { recursive: true });
+const ISOLATED_HOME = mkdtempSync(join(TMP_ROOT, 'pas-build-home-'));
+const ISOLATED_ENV: Record<string, string | undefined> = {
+  ...process.env,
+  HOME: ISOLATED_HOME,
+  XDG_CONFIG_HOME: join(ISOLATED_HOME, '.config'),
+  PAS_OPENCODE_CONFIG_PATH: join(ISOLATED_HOME, 'missing-opencode.json'),
+};
+
+afterAll(() => {
+  rmSync(ISOLATED_HOME, { recursive: true, force: true });
+});
 
 // Clean up before tests
 beforeAll(() => {
@@ -13,7 +37,7 @@ beforeAll(() => {
 
 describe('build command', () => {
   it('should create dist/platforms/opencode/agents/ with the exact PAS roster', async () => {
-    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
     expect(result.exitCode).toBe(0);
 
     const agentsDir = 'dist/platforms/opencode/agents';
@@ -30,7 +54,7 @@ describe('build command', () => {
   });
 
   it('preserves clarification and human-readable planning in both built primary agents', async () => {
-    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
     expect(result.exitCode).toBe(0);
 
     for (const name of ['Pulsar Agent Squad', 'Pulsar Agent Turbo']) {
@@ -45,7 +69,7 @@ describe('build command', () => {
   });
 
   it('should build the self-contained pas_developer.md prompt', async () => {
-    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
     expect(result.exitCode).toBe(0);
 
     const devContent = readFileSync('dist/platforms/opencode/agents/pas_developer.md', 'utf-8');
@@ -56,7 +80,7 @@ describe('build command', () => {
   });
 
   it('should build pas_qa.md without legacy progress guidance', async () => {
-    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
     expect(result.exitCode).toBe(0);
 
     const qaContent = readFileSync('dist/platforms/opencode/agents/pas_qa.md', 'utf-8');
@@ -66,14 +90,14 @@ describe('build command', () => {
   });
 
   it('should build file-based platform target', async () => {
-    const result = await $`bun run ${CLI_ENTRY} build --target=cursor`.quiet();
+    const result = await $`bun run ${CLI_ENTRY} build --target=cursor`.env(ISOLATED_ENV).quiet();
     expect(result.exitCode).toBe(0);
 
     expect(existsSync('dist/platforms/cursor/AGENTS.md')).toBe(true);
   });
 
   it('should build the pas-toolkit plugin byte-identical to its source', async () => {
-    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
     expect(result.exitCode).toBe(0);
 
     const builtPath = 'dist/platforms/opencode/plugins/pas-toolkit.ts';
@@ -87,7 +111,7 @@ describe('build command', () => {
   it('should fail for unknown target', async () => {
     let exitCode = 0;
     try {
-      await $`bun run ${CLI_ENTRY} build --target=nonexistent`.quiet();
+      await $`bun run ${CLI_ENTRY} build --target=nonexistent`.env(ISOLATED_ENV).quiet();
     } catch (e: any) {
       exitCode = e.exitCode;
     }
@@ -110,7 +134,7 @@ describe('built Lead prompt: parallel research contract', () => {
   let leadPrompt = '';
 
   beforeAll(async () => {
-    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
     expect(result.exitCode).toBe(0);
     leadPrompt = normalizeLeadPrompt(
       readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
@@ -165,7 +189,7 @@ describe('built Lead prompt: runtime permission contract', () => {
   let leadPrompt = '';
 
   beforeAll(async () => {
-    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
     expect(result.exitCode).toBe(0);
     leadPrompt = normalizeLeadPrompt(
       readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
@@ -204,7 +228,7 @@ describe('built Lead prompt: state lifecycle and hygiene contract', () => {
   let leadPrompt = '';
 
   beforeAll(async () => {
-    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
     expect(result.exitCode).toBe(0);
     leadPrompt = normalizeLeadPrompt(
       readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
@@ -249,7 +273,7 @@ describe('built worker prompts: internal parallelism guards', () => {
   let developerPrompt = '';
 
   beforeAll(async () => {
-    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
     expect(result.exitCode).toBe(0);
     qaPrompt = normalizeWorkerPrompt(
       readFileSync('dist/platforms/opencode/agents/pas_qa.md', 'utf-8'),
@@ -281,7 +305,7 @@ describe('built prompts: scenario tag policy', () => {
   let qaPrompt = '';
 
   beforeAll(async () => {
-    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
     expect(result.exitCode).toBe(0);
     leadPrompt = normalizeLeadPrompt(
       readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
@@ -318,13 +342,62 @@ describe('built prompts: scenario tag policy', () => {
   });
 });
 
+describe('built prompts: bounded delegation contract', () => {
+  let squadPrompt = '';
+  let turboPrompt = '';
+  let researcherPrompt = '';
+  let developerPrompt = '';
+  let qaPrompt = '';
+
+  beforeAll(async () => {
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
+    expect(result.exitCode).toBe(0);
+    squadPrompt = normalizeLeadPrompt(
+      readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
+    );
+    turboPrompt = normalizeWorkerPrompt(
+      readFileSync('dist/platforms/opencode/agents/Pulsar Agent Turbo.md', 'utf-8'),
+    );
+    researcherPrompt = normalizeWorkerPrompt(
+      readFileSync('dist/platforms/opencode/agents/pas_researcher.md', 'utf-8'),
+    );
+    developerPrompt = normalizeWorkerPrompt(
+      readFileSync('dist/platforms/opencode/agents/pas_developer.md', 'utf-8'),
+    );
+    qaPrompt = normalizeWorkerPrompt(
+      readFileSync('dist/platforms/opencode/agents/pas_qa.md', 'utf-8'),
+    );
+  });
+
+  it('ships the same delegation brief block in both primary agents', () => {
+    const extract = (prompt: string) =>
+      prompt.match(/<delegation_brief>([\s\S]*?)<\/delegation_brief>/)?.[1].trim() ?? '';
+    expect(extract(squadPrompt)).not.toBe('');
+    expect(extract(turboPrompt)).toBe(extract(squadPrompt));
+  });
+
+  it('ships the researcher answer, coverage, limits and closure fields', () => {
+    for (const tag of ['<answer>', '<coverage>', '<limits>', '<closure>']) {
+      expect(researcherPrompt).toContain(tag);
+    }
+    expect(researcherPrompt).toContain('Source inspection is not a live run');
+  });
+
+  it('ships the QA existing-behavior rule beside the developer TDD contract', () => {
+    expect(qaPrompt).toContain('behavior that already exists');
+    expect(qaPrompt).toContain('do not manufacture TDD evidence');
+    expect(developerPrompt).toContain('Red -> Green -> Refactor');
+    expect(developerPrompt).toContain('full project test suite');
+  });
+});
+
 describe('built prompts: project documentation contract', () => {
   let leadPrompt = '';
   let developerPrompt = '';
   let qaPrompt = '';
 
   beforeAll(async () => {
-    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.quiet();
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
     expect(result.exitCode).toBe(0);
     leadPrompt = normalizeLeadPrompt(
       readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),

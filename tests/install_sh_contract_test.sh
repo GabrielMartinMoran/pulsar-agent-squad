@@ -4,6 +4,8 @@
 # - install.sh exists at repo root and is executable
 # - install.sh defaults to the opencode target
 # - install.sh delegates to `pas install --target=opencode` (reuse existing flow)
+# - `pas install` builds fresh artifacts itself; install.sh never runs a
+#   separate build step
 # - A shared bun-detection helper exists at scripts/lib/find-bun.sh
 # - Both `pas` (root) and install.sh source the shared helper (single source of truth)
 set -euo pipefail
@@ -78,5 +80,9 @@ assert_not_contains "install.sh" "opencode.json"
 # Scenario: install.sh delegates to `pas install --target=opencode` (reuse existing flow)
 assert_contains "install.sh" "pas install"
 assert_contains "install.sh" "--target=opencode"
+
+# Scenario: the bootstrap relies on `pas install` to build fresh artifacts.
+# It never asks the user (or itself) for a separate pre-install build step.
+assert_not_contains "install.sh" "pas build"
 
 echo "PASS: install.sh + shared bun-helper contract checks"

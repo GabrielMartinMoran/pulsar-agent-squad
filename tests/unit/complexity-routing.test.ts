@@ -93,6 +93,22 @@ describe('PAS worker contracts', () => {
     expect(developer).toContain('BLOCKED');
   });
 
+  it('keeps developer TDD and QA existing-behavior verification distinct', () => {
+    const developer = readFileSync('src/agents/pas_developer.md', 'utf-8');
+    const qa = readFileSync('src/agents/pas_qa.md', 'utf-8');
+    const flatQa = qa.replace(/\s+/g, ' ');
+
+    expect(developer).toContain('Red -> Green -> Refactor');
+    expect(developer).toContain('for behavior changes');
+    expect(developer).toContain('full project test suite');
+    expect(flatQa).toContain('behavior that already exists');
+    expect(flatQa).toContain('Do not require the developer to invent a Red/Green cycle');
+    expect(flatQa).toContain('do not manufacture TDD evidence');
+    expect(flatQa).toContain('You remain read-only');
+    expect(qa).toMatch(/edit: deny/);
+    expect(qa).toMatch(/write: deny/);
+  });
+
   it('requires structured evidence and one QA verdict', () => {
     const researcher = readFileSync('src/agents/pas_researcher.md', 'utf-8');
     const qa = readFileSync('src/agents/pas_qa.md', 'utf-8');

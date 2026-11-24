@@ -72,5 +72,12 @@ for (const name of ['Pulsar Agent Squad', 'Pulsar Agent Turbo']) {
       expect(flatPrompt).toContain('applies immediately or after restart');
       expect(flatPrompt).toContain('unwired');
     });
+
+    it('keeps the bounded delegation brief separate from planning choices', () => {
+      expect(flatPrompt).toContain('<delegation_brief>');
+      expect(flatPrompt).toContain('nonbinding implementation hints');
+      expect(flatPrompt).toContain('never authorize scope');
+      expect(flatPrompt).toContain('does not change');
+    });
   });
 }

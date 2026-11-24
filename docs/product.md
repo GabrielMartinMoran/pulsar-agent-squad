@@ -1,4 +1,4 @@
-> Owner: PAS maintainers · Updated: 2026-10-26
+> Owner: PAS maintainers · Updated: 2026-11-24
 
 # Product
 
@@ -21,6 +21,12 @@ Each group names its behavior contracts:
   selective background delegation, mandatory verification and original PAS
   approval/artifact guarantees. Contract:
   `specs/features/product/turbo-mode.feature`.
+- **Bounded delegation and reports** — both primary modes send one short XML
+  brief at real handoffs, with non-binding hints separated from authorized
+  scope; researcher reports lead with an answer, coverage, limits, and closure;
+  QA re-verifies existing behavior without a manufactured TDD cycle while
+  developer TDD and full-suite checks remain. Contracts:
+  `specs/features/product/bounded-open-code-delegation.feature` (A1–A3).
 - **Runtime permissions** — fixed, documented permission profiles per role;
   denials are policy and route work instead of blocking it. Contracts:
   `specs/features/product/lead-runtime-permissions.feature`.
@@ -40,6 +46,21 @@ Each group names its behavior contracts:
 - **Project documentation** — living docs as maps, updated with the change,
   with an ADR trail. Contracts:
   `specs/features/product/project-documentation.feature`.
+- **Distribution and updates** — a real install builds the selected manifest
+  artifacts before copying, a dry run only previews, one update selection
+  drives both the printed plan and the executed actions, and OpenCode agent
+  installs keep a destination-local inventory. Install rejects a symlinked or
+  non-regular destination before copying. Reinstalls retire only unmodified
+  agents that inventory records; install and uninstall preserve edited,
+  symlinked, and unowned files and keep the ownership marker. Contracts:
+  `specs/features/product/open-code-distribution.feature` (D1–D5).
+- **Tool policies** — deny-only rules kept in a versioned PAS store, scoped per
+  agent or across all PAS agents, with list, setup, block, unblock, clear,
+  dry-run, and doctor reporting. Build injects them into generated frontmatter
+  in the agent's existing format without relaxing unrelated rules, and the
+  deny survives reinstall and uninstall. The manual runtime-enforcement check
+  remains a separate disposable-profile gate. Contracts:
+  `specs/features/product/open-code-tool-policies.feature` (P1–P5).
 
 ## Scope boundaries
 

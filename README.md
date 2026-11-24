@@ -48,11 +48,30 @@ cd pulsar-agent-squad
 ```
 
 `./install.sh` delegates to `pas install --target=opencode`, so the bootstrap
-and the CLI share one code path. Other targets use the same flag:
+and the CLI share one code path. A real install builds the selected target's
+artifacts from source first and validates them before writing anything, so a
+fresh clone needs no separate build step. Other targets use the same flag:
 
 ```bash
 ./install.sh --target=cursor
 ```
+
+To preview an install without building or writing, run
+`./pas install --target=opencode --dry-run`. The preview uses the artifacts
+that already exist under `dist/` and names any that are missing.
+
+The OpenCode agent destination also gets a `.pas-install-inventory.json` file
+that records the relative agent filenames and content digests PAS installed.
+Reinstalling prunes a retired agent only when it is still a regular, unmodified
+file that the destination inventory owns. Edited, symlinked, unowned, and user
+files stay, and `pas uninstall` applies the same guard. Protected records keep
+their original digest, and the marker remains after uninstall even with zero
+records, so a repeated uninstall never falls back to name-based cleanup. Only a
+destination without any marker uses the original canonical fallback. The
+installer also refuses a symbolic link or other non-regular entry at the agents
+directory or at any shipped agent path, before copying anything. Because the
+inventory is destination-local, a `--destdir` destination keeps its own
+ownership record.
 
 OpenCode is the primary runtime; the full target list is
 [`config/platforms.manifest`](config/platforms.manifest).
@@ -95,6 +114,44 @@ The file [`.pas/pas.config.yaml`](.pas/pas.config.yaml) belongs to the
 PAS harness **itself** and is not the reusable template. Review the generated
 `product`, `mind_spaces`, memory settings, and Gherkin policy for your project.
 Mind is optional (`memory.required: false` in the example).
+
+## Tool policies
+
+PAS can deny OpenCode tools per agent, or for every PAS agent, from one
+PAS-owned store. Policies are deny-only: they never grant a permission and
+never edit `opencode.json`.
+
+```bash
+./pas tools list                          # current denies (read-only)
+./pas tools block webfetch                # deny for all PAS agents
+./pas tools block bash --scope agent --agent pas_researcher
+./pas tools unblock bash --scope agent --agent pas_researcher
+./pas tools clear --dry-run               # preview a scope-wide clear
+./pas tools setup                         # interactive wizard
+```
+
+`bash`, `write`, `patch`, and `task` are aliases of the canonical `shell`,
+`edit`, and `subagent` actions. The store lives at
+`~/.config/opencode/pas/policies.json` (`XDG_CONFIG_HOME` is respected), is
+versioned, and is written atomically. `./pas doctor` reports a missing,
+readable, or invalid store without modifying it.
+
+A policy change is persisted, not applied live. It reaches the generated and
+installed agent files on the next build and install, and OpenCode loads it in a
+fresh session:
+
+```bash
+./pas build --target=opencode
+./pas install --target=opencode
+```
+
+For agents that use the legacy `permission:` map, PAS writes the deny in that
+same map (`shell`→`bash`, `subagent`→`task`, `edit`→`edit`/`write`/`patch`).
+For agents with the native V2 `permissions:` list, PAS appends a
+`resource: "*"` deny at the end of the list. Existing unrelated rules and the
+existing `pas skills` injection are preserved, and an existing restriction is
+never relaxed. Uninstall removes installed agent files but never the policy
+store or your OpenCode configuration.
 
 ## Pulsar Agent Turbo (alternative OpenCode mode)
 
@@ -245,15 +302,21 @@ This README is the map; these are the deeper maps:
 Stay on your current upstream branch:
 
 ```bash
-./pas update               # git pull --ff-only
-./pas update --rebuild     # pull, then build the opencode target
+./pas update               # git pull --ff-only, then install opencode
+./pas update --rebuild     # pull, then build the opencode target only
 ./pas update --reinstall   # pull, then install the opencode target
-./pas update --check       # show the plan, change nothing
+./pas update --check       # show the plan; no pull, build, or install
 ```
 
 `./pas update` is a local checkout helper: it refuses to run with uncommitted
 changes and does not implement release-based updater logic (no release fetches,
-no version pins, no tarballs).
+no version pins, no tarballs). The default install builds fresh OpenCode
+artifacts, so it needs no separate build step. `--check` prints the same action
+list the run would execute.
+
+If the install fails after the fast-forward pull completes, update exits
+non-zero and reports partial completion. The checkout stays at the pulled
+revision; nothing is rolled back.
 
 ## Project structure
 

@@ -230,10 +230,27 @@ tool and arguments actually available in the running session. Keep this
 agent's legacy OpenCode permission frontmatter consistent with the PAS roster;
 OpenCode 2 translates supported legacy agent definitions.
 
-- Give a closed brief: objective, approved scope and authorization metadata
-  (for edits), exact paths, state/feature identifiers, assigned skills,
-  acceptance scenarios, test commands, artifacts, return format, and stop
-  conditions. `pas_developer` needs an existing approved state/task contract.
+#### Bounded delegation brief
+
+Use this one short XML brief only at an actual worker handoff. It does not
+change the delegation decision, the worker roster, or the direct path. Direct
+execution does not use this brief. Keep non-binding hints separate from
+authorized scope; the block is a text contract, not runtime enforcement.
+
+<delegation_brief>
+  <objective>one bounded outcome and why it matters</objective>
+  <scope>approved paths, behaviors, and authorization reference</scope>
+  <exclusions>work and paths that are explicitly out of scope</exclusions>
+  <sources>state artifact, feature contract, prior evidence, and inputs to read</sources>
+  <acceptance>scenario IDs or observable result that decides the task</acceptance>
+  <checks>required commands, exit criteria, and skill obligations</checks>
+  <evidence>raw output, exit codes, files changed, and limitations to return</evidence>
+  <hints>nonbinding implementation hints; they never authorize scope or extra work</hints>
+</delegation_brief>
+
+- Fill the brief with authorization metadata (for edits), exact paths,
+  state/feature identifiers, assigned skills, and stop conditions.
+  `pas_developer` needs an existing approved state/task contract.
 - Run multiple researchers only for truly independent questions with disjoint
   scopes; prefer at most 2–3. Never run overlapping writers, implementation and
   QA against a changing tree, or checks that mutate the same resources in

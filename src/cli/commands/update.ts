@@ -2,7 +2,7 @@ import { defineCommand } from 'citty';
 import { spawnSync } from 'bun';
 
 /**
- * Run a shell command and return its captured stdout.
+ * Run a shell command and return its captured output.
  * Exits the process on failure unless `optional` is true.
  */
 function run(cmd: string[], optional = false): { stdout: string; stderr: string; exitCode: number } {
@@ -29,18 +29,55 @@ interface UpdateOptions {
   reinstall: boolean;
 }
 
+export type UpdateActionKind = 'build' | 'install';
+
+export interface UpdateAction {
+  kind: UpdateActionKind;
+  target: string;
+}
+
 /**
- * `pas update` - pull the current upstream branch and (optionally) rebuild
- * and reinstall the canonical target.
+ * Select the post-pull actions. The printed plan and the execution loop both
+ * consume this one list, so they cannot drift apart.
+ *
+ * - default and `--reinstall`: install OpenCode; install builds internally.
+ * - `--rebuild` alone: build OpenCode without installing.
+ * - `--rebuild --reinstall`: install only, so the build is not duplicated.
+ */
+export function selectUpdateActions(opts: {
+  rebuild: boolean;
+  reinstall: boolean;
+}): UpdateAction[] {
+  const wantsInstall = opts.reinstall || !opts.rebuild;
+  return [
+    wantsInstall
+      ? { kind: 'install', target: 'opencode' }
+      : { kind: 'build', target: 'opencode' },
+  ];
+}
+
+/** Human-readable action line shared by the plan and failure reports. */
+export function describeUpdateAction(action: UpdateAction): string {
+  return `pas ${action.kind} --target=${action.target}`;
+}
+
+function commandForAction(action: UpdateAction): string[] {
+  return ['bun', 'run', 'cli', action.kind, `--target=${action.target}`];
+}
+
+/**
+ * `pas update` - pull the current upstream branch and install/build OpenCode.
  *
  * Contract:
- *   - Default branch behavior: the current upstream branch
- *     (i.e. `git pull` with no explicit branch argument).
- *   - Does NOT implement release-based updater logic (no /releases/latest,
- *     no version pin, no tag fetch). This command is a local checkout helper
- *     for users who track the main branch.
- *   - Does NOT auto-install bun or auto-edit default_agent.
- *   - Does NOT modify tracked files outside of `git pull`'s own behavior.
+ *   - Fast-forward-only pull of the current upstream branch (`git pull
+ *     --ff-only`). No release-based updater logic: no release fetches, version
+ *     pins, or tag fetches.
+ *   - The default action is a fresh OpenCode install (the installer builds
+ *     selected artifacts itself). `--rebuild` alone builds without installing;
+ *     `--reinstall` installs explicitly; `--check` shows the plan and changes
+ *     nothing.
+ *   - A failure after a completed pull is reported as partial completion with
+ *     a nonzero status. The checkout is never rolled back.
  */
 export async function performUpdate(opts: UpdateOptions): Promise<number> {
   // 1. Pre-flight: must be inside a git working tree
@@ -61,7 +98,7 @@ export async function performUpdate(opts: UpdateOptions): Promise<number> {
   console.log(`>> Current branch: ${branch}`);
   console.log(`>> Tracking remote: ${remote}${upstream ? ' (' + upstream + ')' : ''}`);
 
-  // 3. Working-tree must be clean (or stashed) — refuse to clobber local edits
+  // 3. Working-tree must be clean — refuse to clobber local edits
   const statusPorcelain = run(['git', 'status', '--porcelain'], true).stdout.trim();
   if (statusPorcelain.length > 0) {
     console.error('Error: working tree has uncommitted changes. Commit or stash before updating.');
@@ -69,10 +106,12 @@ export async function performUpdate(opts: UpdateOptions): Promise<number> {
     return 1;
   }
 
-  // 4. Plan the actions
-  const steps: string[] = [`git pull (current upstream branch: ${branch})`];
-  if (opts.rebuild) steps.push('pas build --target=opencode');
-  if (opts.reinstall) steps.push('pas install --target=opencode');
+  // 4. Plan the actions once; the same list drives execution below.
+  const actions = selectUpdateActions(opts);
+  const steps = [
+    `git pull --ff-only (current upstream branch: ${branch})`,
+    ...actions.map(describeUpdateAction),
+  ];
 
   console.log('>> Plan:');
   for (const s of steps) console.log(`     - ${s}`);
@@ -82,20 +121,35 @@ export async function performUpdate(opts: UpdateOptions): Promise<number> {
     return 0;
   }
 
-  // 5. git pull — current upstream branch behavior
-  console.log('>> git pull');
-  const pull = run(['git', 'pull', '--ff-only'], false);
+  // 5. Fast-forward-only pull of the current upstream branch.
+  console.log('>> git pull --ff-only');
+  const pull = run(['git', 'pull', '--ff-only'], true);
   process.stdout.write(pull.stdout);
   if (pull.stderr.length > 0) process.stderr.write(pull.stderr);
-
-  // 6. Optional rebuild / reinstall — only when explicitly requested
-  if (opts.rebuild) {
-    console.log('>> pas build --target=opencode');
-    run(['bun', 'run', 'cli', 'build', '--target=opencode'], false);
+  if (pull.exitCode !== 0) {
+    console.error('Error: git pull --ff-only failed; nothing was built or installed.');
+    return pull.exitCode || 1;
   }
-  if (opts.reinstall) {
-    console.log('>> pas install --target=opencode');
-    run(['bun', 'run', 'cli', 'install', '--target=opencode'], false);
+
+  const head = run(['git', 'rev-parse', '--short', 'HEAD'], true).stdout.trim();
+
+  // 6. Run the planned actions. A failure is surfaced as partial completion:
+  //    the completed pull stays in place and is never rolled back.
+  for (const action of actions) {
+    const label = describeUpdateAction(action);
+    console.log(`>> ${label}`);
+    const result = run(commandForAction(action), true);
+    process.stdout.write(result.stdout);
+    if (result.stderr.length > 0) process.stderr.write(result.stderr);
+
+    if (result.exitCode !== 0) {
+      console.error(
+        `>> pas update: partial — ${label} failed (exit ${result.exitCode}) after pulling ${head}.`,
+      );
+      console.error(`>> The checkout remains at ${head}; nothing was rolled back.`);
+      console.error(`>> Fix the failure and re-run \`${label}\`.`);
+      return result.exitCode || 1;
+    }
   }
 
   console.log('>> pas update: done.');
@@ -105,16 +159,16 @@ export async function performUpdate(opts: UpdateOptions): Promise<number> {
 export const updateCommand = defineCommand({
   meta: {
     name: 'update',
-    description: 'Pull the current upstream PAS branch (optionally rebuild and reinstall)',
+    description: 'Pull the current upstream PAS branch, then install OpenCode (or build/reinstall)',
   },
   args: {
     check: {
       type: 'boolean',
-      description: 'Show the plan without modifying anything',
+      description: 'Show the plan without pulling, building, or installing',
     },
     rebuild: {
       type: 'boolean',
-      description: 'After pulling, run `pas build --target=opencode`',
+      description: 'After pulling, run `pas build --target=opencode` (no install)',
     },
     reinstall: {
       type: 'boolean',

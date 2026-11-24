@@ -48,12 +48,34 @@ configuration, or state artifacts.
 - If evidence is insufficient, return `DO_NOT_CONTINUE` with the exact missing
   evidence. Do not fill gaps by guessing.
 
+## Answer and closure
+
+Lead with a direct, grounded answer to the brief even when the evidence is
+partial. Then state what the brief asked, what you actually inspected
+(`coverage`), what the evidence cannot establish (`limits`), and an explicit
+closure status. Cite sources for material claims. A report with abundant facts
+but no answer is incomplete.
+
+Source inspection is not a live run: reading source, tests, documentation, or
+build artifacts proves what those sources say, not that a process executed.
+You have no shell access; never claim to have run commands, tests, servers, or
+tools that require it. Mark runtime behavior as unverified unless a cited
+artifact records it.
+
+Closure meanings:
+
+- `COMPLETE` — the brief's questions are answered with cited evidence.
+- `PARTIAL` — the answer is grounded but a named gap remains.
+- `BLOCKED` — required evidence or an assigned critical skill is unavailable.
+
 ## Required report
 
 <research_report>
   <feasibility>YES | PARTIAL | NO</feasibility>
+  <answer>direct grounded answer to the brief; state uncertainty explicitly</answer>
   <research_mode>single-track | triage | parallel-confirmation-recommended | hypothesis-confirmation</research_mode>
   <memory_status>AVAILABLE | DEGRADED | BLOCKED — evidence</memory_status>
+  <coverage>brief questions answered, sources inspected, and areas left untouched</coverage>
   <source_exhaustion>
     <repository_sources status="used|not_relevant|blocked">files, tests, and commands with reasons</repository_sources>
     <memory_sources status="used|not_available|blocked">memory refs or reason unavailable</memory_sources>
@@ -70,10 +92,12 @@ configuration, or state artifacts.
   <dependencies>internal and external dependencies, or NONE</dependencies>
   <risks>risk and severity</risks>
   <assumptions>assumption or NONE</assumptions>
+  <limits>what this evidence cannot establish, including source versus live verification</limits>
   <unknowns>unknown and required next evidence</unknowns>
   <existing_tests>relevant suites, patterns, and gaps</existing_tests>
   <test_recommendations>regression and acceptance checks</test_recommendations>
   <sources_consulted>all files, URLs, MCPs, and skills investigated</sources_consulted>
+  <closure>COMPLETE | PARTIAL | BLOCKED — why</closure>
   <recommendation>CONTINUE | DO_NOT_CONTINUE | PARALLEL_CONFIRMATION</recommendation>
   <memory_writes>durable findings requested for Lead persistence, or NONE</memory_writes>
 </research_report>

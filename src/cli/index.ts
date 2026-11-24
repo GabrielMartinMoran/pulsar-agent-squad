@@ -64,6 +64,7 @@ const main = defineCommand({
     update: () => import('./commands/update').then((m) => m.updateCommand),
     agents: () => Promise.resolve(agentsCommand),
     skills: () => Promise.resolve(skillsCommand),
+    tools: () => import('./commands/tools/command').then((m) => m.toolsCommand),
   },
 });
 
