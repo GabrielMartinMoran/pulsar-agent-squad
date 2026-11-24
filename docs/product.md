@@ -21,6 +21,11 @@ Each group names its behavior contracts:
   selective background delegation, mandatory verification and original PAS
   approval/artifact guarantees. Contract:
   `specs/features/product/turbo-mode.feature`.
+- **Agent output communication** — both primary modes lead routine progress and
+  substantive closings with the outcome, surface material issues promptly,
+  separate a pending check from a blocked delivery, and answer quick questions
+  without a delivery template. Contracts:
+  `specs/features/product/agent-output-communication.feature` (C1–C4).
 - **Bounded delegation and reports** — both primary modes send one short XML
   brief at real handoffs, with non-binding hints separated from authorized
   scope; researcher reports lead with an answer, coverage, limits, and closure;

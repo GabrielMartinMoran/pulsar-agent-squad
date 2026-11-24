@@ -185,6 +185,38 @@ describe('built Lead prompt: parallel research contract', () => {
   });
 });
 
+describe('built prompts: readable progress and closing contract', () => {
+  let squadPrompt = '';
+  let turboPrompt = '';
+
+  beforeAll(async () => {
+    const result = await $`bun run ${CLI_ENTRY} build --target=opencode`.env(ISOLATED_ENV).quiet();
+    expect(result.exitCode).toBe(0);
+    squadPrompt = normalizeLeadPrompt(
+      readFileSync('dist/platforms/opencode/agents/Pulsar Agent Squad.md', 'utf-8'),
+    );
+    turboPrompt = normalizeWorkerPrompt(
+      readFileSync('dist/platforms/opencode/agents/Pulsar Agent Turbo.md', 'utf-8'),
+    );
+  });
+
+  it('ships the Squad milestone contract with research cadence intact', () => {
+    expect(squadPrompt).toContain('one progress line per completed subagent');
+    expect(squadPrompt).toContain('one verified milestone');
+    expect(squadPrompt).toContain('independent QA');
+    expect(squadPrompt).toContain('descriptive Markdown heading');
+    expect(squadPrompt).toContain('Do not repeat an identical status line');
+  });
+
+  it('ships both primary closing contracts into the installable build', () => {
+    expect(turboPrompt).toContain('descriptive Markdown heading');
+    expect(turboPrompt).toContain('direct vs delegated');
+    expect(turboPrompt).toContain('`SELF | INDEPENDENT | NONE`');
+    expect(turboPrompt).toContain('quick question is not a workflow closing');
+    expect(squadPrompt).toContain('quick question is not a session closing');
+  });
+});
+
 describe('built Lead prompt: runtime permission contract', () => {
   let leadPrompt = '';
 

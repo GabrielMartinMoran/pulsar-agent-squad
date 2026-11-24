@@ -69,6 +69,15 @@ keeps TDD for behavior changes and the full suite. Sources:
 `specs/features/product/bounded-open-code-delegation.feature` (A1–A5) and the
 five prompts above.
 
+User-facing communication follows one contract in both primary modes: routine
+progress and substantive closings lead with the outcome, material issues are
+reported promptly with whether other work can proceed, and quick answers stay
+direct. Internal worker reports, approvals, delegation order, and QA semantics
+are unchanged. Sources:
+`specs/features/product/agent-output-communication.feature` (C1–C4),
+`src/agents/Pulsar Agent Squad.md` (Subagent sequencing, Session termination),
+and `src/agents/Pulsar Agent Turbo.md` (Compact handoff and final report).
+
 ## Distribution pipeline
 
 Prompts and the state toolkit ship as built artifacts. The manifest is the

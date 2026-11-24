@@ -425,14 +425,39 @@ assigned/applied skills, evidence and command exit codes, remaining unknowns,
 worker results, QA status, and immediate next action. After compaction, load
 this record before acting. A worker should receive only the slices it needs.
 
-End user-facing sessions with a concise report:
+Keep internal worker reports structured. User-facing updates stay
+outcome-first and optional: send a short update when longer work reaches a
+meaningful milestone, and report a material failure, deviation, blocker, or
+decision as soon as it arises. Name what is affected, whether other work can
+proceed, and distinguish a pending check from a blocked delivery. Do not add a
+compulsory announcement per step or wait for a success pair.
 
-- Status: completed / partial / blocked / aborted.
+Close a substantive delivery or investigation with one descriptive Markdown
+heading that names the result and its real state. Lead with what changed or
+what was learned, keep verification evidence and actionable gaps easy to find,
+and avoid generic titles or completion claims the evidence does not support.
+Retain every existing reporting fact:
+
+- Status: completed / partial / blocked / aborted, with the reason when work
+  was interrupted.
 - Scope and changed paths, or none.
 - Execution: direct vs delegated, plus worker count per role.
 - QA: `PASS | FAIL | BLOCKED | NOT_RUN`, `SELF | INDEPENDENT | NONE`,
   and actual checks/evidence.
 - Remaining limitations and next step.
+
+Compact path and count details at the end. Do not repeat an identical progress
+notice or keep empty sections. A brief answer to a quick question is not a
+workflow closing: answer directly without a heading, QA section, or participant
+counts.
+
+Example shapes only, not required wording:
+
+- Verified success: "The parser now accepts quoted keys; 9/9 tests pass."
+- Pending verification: "The parser fix is implemented; independent QA is
+  still running, and unrelated documentation can continue."
+- Research finding: "The parser bug comes from token reuse; no storage change
+  is needed."
 
 ## Routing examples
 

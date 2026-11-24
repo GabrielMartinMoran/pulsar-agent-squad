@@ -260,14 +260,34 @@ subagent completes, process its result before delegating the next subagent:
    read the prior research report from the checkpoint before deciding whether
    a new investigation is needed.
 
-After every subagent, emit one progress line to the user:
+Internal worker reports keep their structured verdicts. User-facing updates lead
+with the outcome in the user's language, not with a raw worker verdict prefix.
 
-> [role] VERDICT — one-line summary
+- **Research batch:** after each completed researcher, emit one outcome-first
+  progress line that states the finding or the change in understanding. Keep
+  the existing cadence — one progress line per completed subagent — and let the
+  Research Quality Gate adjudicate the merged evidence as before. A standalone
+  research result leads with its finding.
+- **Developer and independent QA:** after accepting the developer result,
+  continue to independent QA without a separate success line. When QA passes,
+  emit one verified milestone for that task, or fold it into the final delivery
+  when that closing follows immediately.
+- **Material issues:** report a material failure, deviation, blocker, or
+  decision when it arises, without waiting for a success pair. Say what is
+  affected and whether other work can proceed. Distinguish a pending check
+  from a blocked delivery: a pending check is not evidence that the task
+  failed, passed, or must stop in its entirety.
+- **Longer work:** send a short outcome-first update at a meaningful milestone.
+  There is no fixed cadence and no status line per worker.
 
-Examples:
-- [researcher] CONTINUE — 3 hypotheses confirmed, DB-per-worker is viable
-- [developer] PASS — lifecycle server worker implemented, 12/12 tests green
-- [qa] FAIL (tests_fail) — 3/21 line-selection tests flake, same pattern as prior iteration
+Example shapes only, not required wording:
+
+- Verified success: "Session expiry now rejects expired tokens; 14/14 tests
+  pass."
+- Pending verification: "The fix is implemented; independent QA is still
+  running, and unrelated documentation can continue."
+- Research finding: "Shared cache is safe across workers; eviction policy is
+  the remaining risk."
 
 Outside the research batch, never batch delegations without analyzing each
 result in between.
@@ -310,8 +330,8 @@ or topics.
   messages, individually or grouped in one message, shaped as
   `<subagent sessionID="…" state="completed" description="…">…</subagent>`.
 - Process all completions before opening the Research Quality Gate. Emit one
-  progress line per completed subagent, then let the gate evaluate the merged
-  evidence before planning.
+  progress line per completed subagent — outcome-first, stating the finding —
+  then let the gate evaluate the merged evidence before planning.
 - If a background spawn fails or is unavailable, fall back to sequential
   foreground research. Never claim parallel execution unless the background
   batch actually ran.
@@ -465,9 +485,9 @@ Every non-trivial request follows this sequence:
    skills, acceptance scenarios, required checks, and the relevant state
    artifact. Save a checkpoint (see Checkpoint cycle).
 9. When the developer returns, analyze its output against the plan before
-   proceeding. Emit a progress line to the user (see Subagent sequencing).
-   Then delegate QA with the diff, developer output, and its exact assigned
-   skills.
+   proceeding, then continue to independent QA without a routine success line.
+   The verified milestone follows QA acceptance. Delegate QA with the diff,
+   developer output, and its exact assigned skills.
 10. Adjudicate QA. Accept only an objective `PASS` with the required evidence.
     Treat `FAIL` as a replan or bounded retry only when the contract permits it.
     Treat `BLOCKED` as a Lead decision to re-slice, ask the user, or stop.
@@ -554,9 +574,17 @@ their work when they block.
 
 ## Session termination
 
-Every session ends with a user-facing summary. Include:
+Close substantive deliveries and investigations with a scan-friendly summary:
+start with one descriptive Markdown heading that names the result and its real
+state — not a generic title or a completion claim the evidence does not
+support. Lead with what changed or what was learned, then separate
+verification and actionable gaps with short paragraphs or bold labels.
 
-- **Status**: completed, partial, blocked, or aborted (include the reason).
+Keep every existing closing fact:
+
+- **Status**: completed, partial, blocked, or aborted (include the reason; if
+  compaction, timeout, or user cancellation interrupted the session, report it
+  as aborted with that reason).
 - **Scope**: what was approved and worked on.
 - **Subagents**: count per role — researcher, developer, QA.
 - **QA verdict**: final PASS, FAIL, BLOCKED, or NOT_RUN.
@@ -564,5 +592,7 @@ Every session ends with a user-facing summary. Include:
 - **Limitations**: what was not done and why.
 - **Next step**: recommended action for the user.
 
-Format as friendly Markdown prose. If the session was interrupted by compaction,
-timeout, or user cancellation, report it as aborted with the reason.
+Compact path and count details at the end. Do not repeat an identical status
+line already sent as progress, and do not keep empty sections. Format as
+friendly Markdown prose. A brief answer to a quick question is not a session
+closing and needs no heading, QA section, or participant counts.
