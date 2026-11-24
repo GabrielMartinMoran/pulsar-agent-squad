@@ -123,7 +123,9 @@ describe('OpenCode tool policy build: the five legacy agents', () => {
 
     const researcher = contents.get('pas_researcher.md')!;
     expect(researcher).toMatch(/^ {2}webfetch: deny$/m);
-    expect(researcher).toMatch(/^ {2}bash: deny$/m);
+    expect(researcher).toMatch(/^ {2}bash:$/m);
+    expect(researcher).toContain('    "*": allow');
+    expect(researcher).toMatch(/^ {4}"rm \*": deny$/m);
     expect(researcher).toMatch(/^ {2}task: deny$/m);
 
     const developer = contents.get('pas_developer.md')!;
@@ -268,5 +270,88 @@ describe('OpenCode tool policy build: native V2 fixture', () => {
     );
     expect(second.exitCode).toBe(0);
     expect(readFileSync(path)).toEqual(first);
+  });
+});
+
+describe('OpenCode tool policy build: researcher shell override', () => {
+  let fixture = '';
+  let fixtureHome = '';
+
+  function fixtureEnv(): Record<string, string | undefined> {
+    return {
+      ...process.env,
+      HOME: fixtureHome,
+      XDG_CONFIG_HOME: join(fixtureHome, '.config'),
+      PAS_OPENCODE_CONFIG_PATH: join(fixtureHome, 'missing-opencode.json'),
+    };
+  }
+
+  function build() {
+    return spawnSync(['bun', 'run', CLI_ENTRY, 'build', '--target=opencode'], {
+      cwd: fixture,
+      env: fixtureEnv(),
+    });
+  }
+
+  beforeAll(() => {
+    fixture = makeTmp('pas-tool-build-researcher-repo-');
+    fixtureHome = join(fixture, 'home');
+
+    cpSync(join(REPO_ROOT, 'src'), join(fixture, 'src'), { recursive: true });
+    cpSync(join(REPO_ROOT, 'config'), join(fixture, 'config'), {
+      recursive: true,
+    });
+    cpSync(join(REPO_ROOT, 'package.json'), join(fixture, 'package.json'));
+    symlinkSync(
+      join(REPO_ROOT, 'node_modules'),
+      join(fixture, 'node_modules'),
+      'dir',
+    );
+    mkdirSync(join(fixtureHome, '.config/opencode/pas'), { recursive: true });
+  });
+
+  afterAll(() => {
+    if (fixture) rmSync(fixture, { recursive: true, force: true });
+  });
+
+  it('replaces the hybrid map with one shell deny and leaves other profiles unchanged', () => {
+    const dist = join(fixture, 'dist/platforms/opencode/agents');
+
+    const baseline = build();
+    expect(baseline.exitCode).toBe(0);
+    expect(baseline.stderr.toString()).not.toContain('V1 permission block');
+    const before = new Map(
+      PAS_AGENT_FILES.map((file) => [file, readFileSync(join(dist, file))]),
+    );
+
+    const baselineResearcher = before.get('pas_researcher.md')!.toString();
+    expect(baselineResearcher).toMatch(/^ {2}bash:$/m);
+    expect(baselineResearcher).toContain('    "*": allow');
+    expect(baselineResearcher).toMatch(/^ {4}"rm \*": deny$/m);
+
+    writeFileSync(
+      join(fixtureHome, '.config/opencode/pas/policies.json'),
+      JSON.stringify({
+        version: 1,
+        agents: { pas_researcher: { tools: ['shell'] } },
+      }),
+    );
+
+    const blocked = build();
+    expect(blocked.exitCode).toBe(0);
+
+    const researcher = readFileSync(join(dist, 'pas_researcher.md'), 'utf8');
+    expect(researcher.match(/^ {2}bash:/gm)).toHaveLength(1);
+    expect(researcher).toMatch(/^ {2}bash: deny$/m);
+    expect(researcher).not.toContain('    "*": allow');
+    expect(researcher).not.toContain('    "rm *": deny');
+    expect(researcher).toMatch(/^ {2}edit: deny$/m);
+    expect(researcher).toMatch(/^ {2}write: deny$/m);
+    expect(researcher).toMatch(/^ {2}task: deny$/m);
+
+    for (const file of PAS_AGENT_FILES) {
+      if (file === 'pas_researcher.md') continue;
+      expect(readFileSync(join(dist, file))).toEqual(before.get(file)!);
+    }
   });
 });

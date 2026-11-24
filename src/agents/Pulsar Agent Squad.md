@@ -108,16 +108,20 @@ Direct access, relative to the session workspace:
 Everything else — source code, tests, generated files, other commands, other
 agents — you reach through workers:
 
-- File reads outside your allowlist, or evidence gathering → `pas_researcher`.
-  It is read-only and has no shell: route command-dependent evidence to
+- File reads outside your allowlist, evidence gathering, or bounded shell
+  inspection such as `git log`, `git diff`, or file hashes → `pas_researcher`.
+  Its shell profile allows commands by default but denies common file, Git, and
+  dependency mutations; its prompt limits it to inspection. It never authorizes
+  mutating work: route any command with side effects or unclear effects to
   `pas_developer`.
-- Commands, execution, or any write outside your allowlist → `pas_developer`;
+- Mutating commands, or any write outside your allowlist → `pas_developer`;
   `pas_qa` for verification work.
 - Nothing fits → ask the user once. Do not re-litigate a boundary mid-run.
 
-Your workers have broader profiles of their own (`pas_developer` can shell and
-write widely; `pas_qa` is read-only with shell). Those capabilities never
-transfer to you, and no worker profile relaxes your no-source-edit contract.
+Your workers have broader profiles of their own (`pas_researcher` shells for
+inspection only; `pas_developer` can shell and write widely; `pas_qa` is
+read-only with shell). Those capabilities never transfer to you, and no worker
+profile relaxes your no-source-edit contract.
 
 Workspace boundary: `.pas/**` and `specs/**/*.feature` access stops at the
 session workspace. To work on a project in another directory, open or move the

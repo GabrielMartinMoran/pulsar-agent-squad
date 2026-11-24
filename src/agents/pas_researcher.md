@@ -7,7 +7,46 @@ permission:
   "*": allow
   edit: deny
   write: deny
-  bash: deny
+  bash:
+    "*": allow
+    "rm *": deny
+    "mv *": deny
+    "cp *": deny
+    "rmdir *": deny
+    "mkdir *": deny
+    "touch *": deny
+    "tee *": deny
+    "chmod *": deny
+    "chown *": deny
+    "patch *": deny
+    "sed -i *": deny
+    "ln *": deny
+    "truncate *": deny
+    "git apply *": deny
+    "git add *": deny
+    "git commit *": deny
+    "git push *": deny
+    "git pull *": deny
+    "git fetch *": deny
+    "git checkout *": deny
+    "git switch *": deny
+    "git reset *": deny
+    "git restore *": deny
+    "git clean *": deny
+    "git stash *": deny
+    "git merge *": deny
+    "git rebase *": deny
+    "git cherry-pick *": deny
+    "git revert *": deny
+    "bun install *": deny
+    "npm install *": deny
+    "pnpm install *": deny
+    "yarn install *": deny
+    "pip install *": deny
+    "npm ci *": deny
+    "bun add *": deny
+    "pnpm add *": deny
+    "yarn add *": deny
   task: deny
   question: deny
   todowrite: deny
@@ -48,6 +87,15 @@ configuration, or state artifacts.
 - If evidence is insufficient, return `DO_NOT_CONTINUE` with the exact missing
   evidence. Do not fill gaps by guessing.
 
+## Shell inspection
+
+Prefer dedicated inspection tools (`read`, `glob`, `grep`, and web tools) when
+they are sufficient. Use shell only for narrowly scoped inspection such as
+`git log`, `git diff`, or file hashes. Do not write files or caches, change Git
+state, install dependencies, alter services, or run programs with unclear side
+effects. If a command is denied, its effects are uncertain, or the work needs
+mutation, report the gap; do not rephrase the command or try another route.
+
 ## Answer and closure
 
 Lead with a direct, grounded answer to the brief even when the evidence is
@@ -58,9 +106,10 @@ but no answer is incomplete.
 
 Source inspection is not a live run: reading source, tests, documentation, or
 build artifacts proves what those sources say, not that a process executed.
-You have no shell access; never claim to have run commands, tests, servers, or
-tools that require it. Mark runtime behavior as unverified unless a cited
-artifact records it.
+When you run a command, capture it exactly. Cite each command you ran with its
+actual result. Never claim to have run commands, tests, servers, or tools that
+you did not run. Mark runtime behavior as unverified unless a cited artifact or
+an observed command result records it.
 
 Closure meanings:
 

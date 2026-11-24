@@ -34,12 +34,15 @@ Permissions are per role and enforced by the runtime, not by prompt text: the
 original Lead reads `.pas/**`, `specs/**/*.feature`, and `docs/**`, and edits
 only PAS artifacts. Turbo can read/execute/edit source and owns the same PAS
 artifacts, subject to single-use approval; the developer shells and writes
-source but never PAS artifacts;
-researcher and QA are read-only. The exact profiles are the frontmatter of each
-prompt; the Lead contract is `## Runtime permissions and capabilities`. Sources:
-`specs/features/product/lead-runtime-permissions.feature`,
+source but never PAS artifacts. The researcher is a read-only evidence worker
+whose hybrid shell profile allows commands by default, denies common file, Git,
+and dependency mutations, and relies on its prompt to keep shell use to
+inspection; QA is read-only with shell. The exact profiles are the frontmatter
+of each prompt; the Lead contract is `## Runtime permissions and capabilities`.
+Sources: `specs/features/product/lead-runtime-permissions.feature`,
 `specs/features/product/worker-internal-parallelism.feature`,
-`specs/features/product/turbo-mode.feature`.
+`specs/features/product/turbo-mode.feature`,
+`specs/features/product/bounded-open-code-delegation.feature` (A2, A4, A5).
 
 The two modes share **engineering quality**, not execution ownership.
 When Turbo acts as its own developer, it follows targeted Red → Green →
@@ -59,11 +62,11 @@ acceptance, required checks, expected evidence, and non-binding hints. The block
 does not change when either mode delegates, the roster, or permissions; it is a
 text contract, not runtime enforcement. Worker reports close the loop: the
 researcher leads with a grounded answer plus coverage, limits, and an explicit
-closure status, and separates source inspection from live verification (it has
-no shell). QA may re-verify existing behavior from current evidence without
-demanding a new Red/Green cycle; the developer keeps TDD for behavior changes
-and the full suite. Sources:
-`specs/features/product/bounded-open-code-delegation.feature` (A1–A3) and the
+closure status, and separates source inspection from commands it actually ran;
+its prompt limits shell use to inspection. QA may re-verify existing behavior
+from current evidence without demanding a new Red/Green cycle; the developer
+keeps TDD for behavior changes and the full suite. Sources:
+`specs/features/product/bounded-open-code-delegation.feature` (A1–A5) and the
 five prompts above.
 
 ## Distribution pipeline
@@ -125,11 +128,14 @@ so canonical actions are written as legacy keys in the same map
 (`shell`→`bash`, `subagent`→`task`, `edit`→`edit`/`write`/`patch`) after every
 existing rule. Native V2 `permissions:` lists get an appended
 `resource: "*"` deny. Unrelated rules, rule order, and existing denies are
-preserved; an injected deny only tightens. Reinstall rebuilds the artifacts, and
-uninstall never removes the store. `pas update` and `pas install` share this
-build path. Sources: `src/cli/lib/policy-injection.ts`,
-`src/cli/lib/build-target.ts`, `src/cli/commands/install.ts`,
-`specs/features/product/open-code-tool-policies.feature` (P3–P4).
+preserved; an injected deny only tightens. An agent-scoped `shell` deny
+replaces a legacy `bash` map with one scalar `bash: deny`; without that deny the
+source map ships unchanged. Reinstall rebuilds the artifacts, and uninstall
+never removes the store. `pas update` and `pas install` share this build path.
+Sources: `src/cli/lib/policy-injection.ts`, `src/cli/lib/build-target.ts`,
+`src/cli/commands/install.ts`,
+`specs/features/product/open-code-tool-policies.feature` (P3–P4),
+`specs/features/product/bounded-open-code-delegation.feature` (A5).
 
 Runtime enforcement is not proven by build assertions: scenario P5 is a manual
 check in a disposable OpenCode V2 profile.
